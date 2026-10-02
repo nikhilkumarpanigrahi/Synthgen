@@ -19,8 +19,10 @@ from .dataset_manager import (
     inspect_dataset_inventory
 )
 from .cnn_trainer import DownstreamClassifierBenchmark
+from .evaluator import extract_dense_descriptors, QualityAssuranceEngine
 
 benchmark_engine = DownstreamClassifierBenchmark()
+qa_evaluator = QualityAssuranceEngine()
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
 
@@ -316,11 +318,24 @@ class AgenticTrainingOrchestrator:
             min_dist_per_sample = dists.min(dim=1).values
             mean_min_dist = round(float(min_dist_per_sample.mean().item()) / math.sqrt(3 * 64 * 64), 4)
             
-            # 2. Diversity Index: Standard deviation across generated batch
-            diversity_idx = round(float(gen_tensors.std(dim=0).mean().item()), 4)
-            
-            # 3. Simulated/Empirical FID score
-            fid_score = round(max(12.4, 28.5 - (diversity_idx * 15.0)), 2)
+            # 2. Extract multi-scale descriptors for genuine FID & Diversity calculation
+            real_descs = []
+            for b in range(real_batch.size(0)):
+                t_img = (real_batch[b].cpu().clamp(-1, 1) + 1.0) / 2.0
+                np_img = (t_img.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+                real_descs.append(extract_dense_descriptors(Image.fromarray(np_img)))
+
+            synth_descs = []
+            for s in range(target_quota):
+                t_img = (gen_tensors[s].cpu().clamp(-1, 1) + 1.0) / 2.0
+                np_img = (t_img.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+                synth_descs.append(extract_dense_descriptors(Image.fromarray(np_img)))
+
+            arr_r = np.array(real_descs, dtype=np.float32)
+            arr_s = np.array(synth_descs, dtype=np.float32)
+
+            fid_score = round(qa_evaluator._compute_frechet_distance(arr_r, arr_s), 2)
+            diversity_idx = round(qa_evaluator._compute_diversity(arr_s), 3)
             
             # Quality Gate Decision
             privacy_margin = 0.12 # Minimum acceptable distance to prevent 1-to-1 memorization
