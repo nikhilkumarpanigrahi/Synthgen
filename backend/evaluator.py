@@ -5,8 +5,7 @@ from PIL import Image
 from typing import Dict, Any, List, Tuple
 from scipy.linalg import sqrtm
 from sklearn.neighbors import NearestNeighbors
-
-from .dataset_manager import REAL_DIR, SYNTH_DIR, CLASSES
+from .dataset_manager import get_active_dataset_id, get_dataset_base_paths
 
 def extract_dense_descriptors(img: Image.Image) -> np.ndarray:
     """Extracts a normalized 128-dimensional dense multi-scale feature descriptor."""
@@ -51,6 +50,10 @@ class QualityAssuranceEngine:
     """
 
     def run_qa_audit(self) -> Dict[str, Any]:
+        from .dataset_manager import get_active_dataset_id, get_dataset_base_paths
+        ds_id = get_active_dataset_id()
+        real_dir, synth_dir = get_dataset_base_paths(ds_id)
+
         real_descriptors = []
         real_paths = []
         synth_descriptors = []
@@ -63,45 +66,46 @@ class QualityAssuranceEngine:
         }
 
         # 1. Ingest real sample features
-        for c in CLASSES:
-            c_dir = os.path.join(REAL_DIR, c)
-            if os.path.exists(c_dir):
-                for f in sorted(os.listdir(c_dir)):
-                    if f.endswith((".jpg", ".png")):
-                        p = os.path.join(c_dir, f)
-                        try:
-                            with Image.open(p) as im:
-                                desc = extract_dense_descriptors(im)
-                                real_descriptors.append(desc)
-                                real_paths.append(f"/data/real/{c}/{f}")
-                        except Exception:
-                            pass
+        if os.path.exists(real_dir):
+            for c in sorted(os.listdir(real_dir)):
+                c_dir = os.path.join(real_dir, c)
+                if os.path.isdir(c_dir):
+                    for f in sorted(os.listdir(c_dir)):
+                        if f.endswith((".jpg", ".png", ".jpeg")):
+                            p = os.path.join(c_dir, f)
+                            try:
+                                with Image.open(p) as im:
+                                    desc = extract_dense_descriptors(im)
+                                    real_descriptors.append(desc)
+                                    real_paths.append(f"/data/{ds_id}/real/{c}/{f}")
+                            except Exception:
+                                pass
 
         # 2. Ingest synthetic sample features
-        for c in CLASSES:
-            s_dir = os.path.join(SYNTH_DIR, c)
-            if os.path.exists(s_dir):
-                for f in sorted(os.listdir(s_dir)):
-                    if f.endswith((".jpg", ".png")):
-                        p = os.path.join(s_dir, f)
-                        try:
-                            with Image.open(p) as im:
-                                desc = extract_dense_descriptors(im)
-                                synth_descriptors.append(desc)
-                                synth_paths.append(f"/data/synthetic/{c}/{f}")
-                                
-                                # Classify architecture by prefix
-                                f_lower = f.lower()
-                                if "dif" in f_lower:
-                                    synth_by_arch["diffusion"].append(desc)
-                                elif "gan" in f_lower:
-                                    synth_by_arch["gan"].append(desc)
-                                elif "vae" in f_lower:
-                                    synth_by_arch["vae"].append(desc)
-                                else:
-                                    synth_by_arch["augmentation"].append(desc)
-                        except Exception:
-                            pass
+        if os.path.exists(synth_dir):
+            for c in sorted(os.listdir(synth_dir)):
+                s_dir = os.path.join(synth_dir, c)
+                if os.path.isdir(s_dir):
+                    for f in sorted(os.listdir(s_dir)):
+                        if f.endswith((".jpg", ".png", ".jpeg")):
+                            p = os.path.join(s_dir, f)
+                            try:
+                                with Image.open(p) as im:
+                                    desc = extract_dense_descriptors(im)
+                                    synth_descriptors.append(desc)
+                                    synth_paths.append(f"/data/{ds_id}/synthetic/{c}/{f}")
+                                    
+                                    f_lower = f.lower()
+                                    if "dif" in f_lower:
+                                        synth_by_arch["diffusion"].append(desc)
+                                    elif "gan" in f_lower:
+                                        synth_by_arch["gan"].append(desc)
+                                    elif "vae" in f_lower:
+                                        synth_by_arch["vae"].append(desc)
+                                    else:
+                                        synth_by_arch["augmentation"].append(desc)
+                            except Exception:
+                                pass
 
         n_real = len(real_descriptors)
         n_synth = len(synth_descriptors)

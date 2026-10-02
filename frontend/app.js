@@ -1,31 +1,33 @@
-// State Management
+// Synthetix ML Platform — Frontend Logic Engine
 const state = {
   currentView: 'datasets',
   activeCategory: 'real',
   activeClass: '',
   inventory: null,
+  availableDatasets: [],
   lossChart: null,
-  valAccChart: null
+  valAccChart: null,
+  activeJobId: null
 };
 
-// DOM Init
+// Application Initialization
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
+  initDatasetSwitcher();
   initExplorer();
   initPipeline();
   initAudit();
   initBenchmark();
   initUpload();
   initExport();
-  
-  // Initial API loads
-  loadInventory();
-  loadExplorerSamples();
-  loadAuditData();
-  loadBenchmarkData();
+  initInspector();
+
+  // Load baseline system status & datasets
+  loadSystemStatus();
+  loadAvailableDatasets();
 });
 
-// Navigation Handling
+// 1. Navigation Controller
 function initNavigation() {
   const items = document.querySelectorAll('.nav-item');
   items.forEach(btn => {
@@ -33,45 +35,201 @@ function initNavigation() {
       const view = btn.dataset.view;
       items.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      
+
       document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
       const activePanel = document.getElementById(`view-${view}`);
       if (activePanel) activePanel.classList.add('active');
-      
+
       state.currentView = view;
-      if (view === 'benchmarks') {
+      if (view === 'benchmarks' && state.lastBenchmarkData) {
         setTimeout(renderBenchmarkCharts, 50);
       }
     });
   });
 }
 
-// Inventory & Telemetry
+// 2. System Status & Dataset Switcher
+async function loadSystemStatus() {
+  try {
+    const res = await fetch('/api/system/status');
+    const data = await res.json();
+    const statusEl = document.getElementById('deviceStatusText');
+    if (statusEl && data.engine) {
+      statusEl.textContent = `Engine: ${data.engine}`;
+    }
+  } catch (err) {
+    console.warn('System status fetch failed', err);
+  }
+}
+
+async function loadAvailableDatasets() {
+  try {
+    const res = await fetch('/api/datasets/available');
+    const datasets = await res.json();
+    state.availableDatasets = datasets;
+
+    const select = document.getElementById('datasetSelector');
+    select.innerHTML = '';
+
+    datasets.forEach(ds => {
+      const opt = document.createElement('option');
+      opt.value = ds.id;
+      opt.textContent = ds.name;
+      if (ds.is_active) opt.selected = true;
+      select.appendChild(opt);
+    });
+
+    // Also load active inventory
+    await loadInventory();
+    loadExplorerSamples();
+    loadAuditData();
+  } catch (err) {
+    console.error('Failed to load available datasets', err);
+  }
+}
+
+function initDatasetSwitcher() {
+  const select = document.getElementById('datasetSelector');
+  select.addEventListener('change', async (e) => {
+    const newDsId = e.target.value;
+    try {
+      select.disabled = true;
+      const res = await fetch('/api/datasets/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset_id: newDsId })
+      });
+      const data = await res.json();
+      state.inventory = data;
+
+      // Reset benchmark view cards
+      const resultCard = document.getElementById('researchResultCard');
+      if (resultCard) resultCard.style.display = 'none';
+      const hypothesisBadge = document.getElementById('hypothesisStatusText');
+      if (hypothesisBadge) {
+        hypothesisBadge.textContent = 'Awaiting Model Benchmark';
+        hypothesisBadge.classList.remove('proven');
+      }
+
+      await loadInventory();
+      loadExplorerSamples();
+      loadAuditData();
+    } catch (err) {
+      console.error('Failed to select dataset', err);
+    } finally {
+      select.disabled = false;
+    }
+  });
+}
+
+// 3. Inventory & Distribution Telemetry
 async function loadInventory() {
   try {
     const res = await fetch('/api/dataset/inventory');
     const data = await res.json();
     state.inventory = data;
 
-    // Sidebar
-    document.getElementById('sideRealCount').textContent = data.real.total;
-    document.getElementById('sideSynthCount').textContent = data.synthetic.total;
-    document.getElementById('sideImbalance').textContent = `1 : ${data.real.imbalance_ratio}`;
+    const analysis = data.analysis || {};
+    const rareClass = analysis.underrepresented_class || 'minority_class';
+    const imbalanceRatio = analysis.imbalance_ratio || 1.0;
+    const quota = analysis.recommended_augmentation_quota || 0;
 
-    // Metric Strip
-    const counts = state.activeCategory === 'real' ? data.real.counts : data.synthetic.counts;
-    document.getElementById('cntPothole').textContent = counts.pothole || 0;
-    document.getElementById('cntCrack').textContent = counts.surface_crack || 0;
-    document.getElementById('cntNormal').textContent = counts.normal_road || 0;
-    document.getElementById('cntTotalAll').textContent = state.activeCategory === 'real' ? data.real.total : data.synthetic.total;
+    // Sidebar Telemetry
+    document.getElementById('sideDomainId').textContent = data.dataset_id;
+    document.getElementById('sideRealCount').textContent = data.total_real;
+    document.getElementById('sideSynthCount').textContent = data.total_synthetic;
+    document.getElementById('sideImbalance').textContent = `1 : ${imbalanceRatio}`;
+    document.getElementById('sideRareClass').textContent = rareClass;
+    document.getElementById('sideQuota').textContent = `+${quota} samples`;
+
+    // Header Research Context
+    const researchCtx = document.getElementById('researchContextText');
+    if (researchCtx) {
+      researchCtx.innerHTML = `Active Dataset: <strong>${data.dataset_id}</strong> &bull; Auto-Detected Minority: <span style="color:#D29922; font-weight:600;">${rareClass}</span> (${analysis.minority_count} real vs ${analysis.majority_count} majority, ${imbalanceRatio}x imbalance) &bull; Target Quota: +${quota} to balance`;
+    }
+
+    // Dynamic Class Metrics Strip
+    renderDynamicClassStrip(data);
+
+    // Populate class filter dropdown
+    const filter = document.getElementById('classFilter');
+    const prevFilterVal = filter.value;
+    filter.innerHTML = '<option value="">All Classes (All)</option>';
+    data.classes.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = `Class: ${c}`;
+      if (c === prevFilterVal) opt.selected = true;
+      filter.appendChild(opt);
+    });
+
+    // Populate Generative Target Class dropdown & auto-select rare class
+    const targetSelect = document.getElementById('cfgTargetClass');
+    if (targetSelect) {
+      targetSelect.innerHTML = '';
+      data.classes.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = (c === rareClass) ? `${c} ★ (Compensate Rare Scarcity)` : c;
+        if (c === rareClass) opt.selected = true;
+        targetSelect.appendChild(opt);
+      });
+    }
+
+    // Populate Upload Target Class dropdown
+    const uploadSelect = document.getElementById('uploadClassSelect');
+    if (uploadSelect) {
+      uploadSelect.innerHTML = '';
+      data.classes.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        uploadSelect.appendChild(opt);
+      });
+    }
   } catch (err) {
     console.error('Failed to load inventory', err);
   }
 }
 
-// Dataset Explorer
+function renderDynamicClassStrip(data) {
+  const container = document.getElementById('dynamicClassStrip');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const isReal = state.activeCategory === 'real';
+  const counts = isReal ? data.class_counts_real : data.class_counts_synthetic;
+  const rareClass = data.analysis ? data.analysis.underrepresented_class : '';
+
+  data.classes.forEach(c => {
+    const count = counts[c] || 0;
+    const isRare = (c === rareClass);
+    
+    const card = document.createElement('div');
+    card.className = 'strip-item';
+    card.innerHTML = `
+      <span class="strip-label">Class: ${c}</span>
+      <span class="strip-val">${count}</span>
+      <span class="strip-sub ${isRare ? 'status-warn' : 'status-ok'}">
+        ${isRare ? 'Underrepresented Minority' : 'Standard Class'}
+      </span>
+    `;
+    container.appendChild(card);
+  });
+
+  // Total summary card
+  const totalCard = document.createElement('div');
+  totalCard.className = 'strip-item';
+  totalCard.innerHTML = `
+    <span class="strip-label">Total In View</span>
+    <span class="strip-val">${isReal ? data.total_real : data.total_synthetic}</span>
+    <span class="strip-sub">${isReal ? 'Real Ground Truth' : 'Synthetically Generated'}</span>
+  `;
+  container.appendChild(totalCard);
+}
+
+// 4. Dataset Explorer
 function initExplorer() {
-  // Category switch
   const segBtns = document.querySelectorAll('.seg-btn');
   segBtns.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -83,14 +241,12 @@ function initExplorer() {
     });
   });
 
-  // Class filter
   const filter = document.getElementById('classFilter');
   filter.addEventListener('change', (e) => {
     state.activeClass = e.target.value;
     loadExplorerSamples();
   });
 
-  // Refresh btn
   document.getElementById('btnRefreshDataset').addEventListener('click', () => {
     loadInventory();
     loadExplorerSamples();
@@ -104,150 +260,200 @@ async function loadExplorerSamples() {
     <div class="skeleton-card"></div>
     <div class="skeleton-card"></div>
     <div class="skeleton-card"></div>
-    <div class="skeleton-card"></div>
-    <div class="skeleton-card"></div>
   `;
 
   try {
-    const url = `/api/dataset/samples?category=${state.activeCategory}${state.activeClass ? `&class_name=${state.activeClass}` : ''}&limit=48`;
+    let url = `/api/dataset/samples?category=${state.activeCategory}&limit=40`;
+    if (state.activeClass) {
+      url += `&class_name=${encodeURIComponent(state.activeClass)}`;
+    }
+
     const res = await fetch(url);
     const data = await res.json();
 
-    document.getElementById('datasetCountDisplay').textContent = `Showing ${data.items.length} of ${data.total} items`;
+    document.getElementById('datasetCountDisplay').textContent = `Showing ${data.items.length} of ${data.total} samples`;
+    grid.innerHTML = '';
 
     if (data.items.length === 0) {
-      grid.innerHTML = `<div class="placeholder-box">No samples found for category: ${state.activeCategory} with filter: ${state.activeClass || 'all'}</div>`;
+      grid.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 48px; text-align: center; color: var(--text-muted); background: var(--bg-surface); border: 1px dashed var(--border-default); border-radius: var(--radius-md);">
+          No samples present in this view. Use the Generative Synthesis pipeline to synthesize new samples for underrepresented classes.
+        </div>
+      `;
       return;
     }
 
-    grid.innerHTML = '';
     data.items.forEach(item => {
       const card = document.createElement('div');
-      card.className = 'sample-card';
+      card.className = 'image-card';
       card.innerHTML = `
-        <img class="sample-thumbnail" src="${item.url}" alt="${item.filename}" loading="lazy" />
-        <div class="sample-footer">
-          <span class="badge-label ${item.class}">${item.class}</span>
-          <span class="sample-meta-sub">${Math.round(item.size_bytes / 1024)} KB</span>
+        <div class="image-thumb-wrap">
+          <img src="${item.url}" alt="${item.filename}" loading="lazy" />
+          <span class="card-badge ${item.category === 'real' ? 'badge-real' : 'badge-synth'}">${item.category.toUpperCase()}</span>
+        </div>
+        <div class="card-meta">
+          <span class="card-class-tag">${item.class}</span>
+          <span class="card-file-dim">${Math.round(item.size_bytes / 1024)} KB</span>
         </div>
       `;
-      card.addEventListener('click', () => openImageInspector(item));
+
+      card.addEventListener('click', () => openInspector(item));
       grid.appendChild(card);
     });
   } catch (err) {
-    grid.innerHTML = `<div class="placeholder-box" style="color: var(--color-danger);">Error fetching dataset samples.</div>`;
+    console.error('Failed to load explorer samples', err);
+    grid.innerHTML = '<div style="color:var(--color-danger); padding:20px;">Failed to fetch sample inventory from server.</div>';
   }
 }
 
-// Pipeline Dispatcher
+// 5. Generative Synthesis Pipeline
 function initPipeline() {
   const slider = document.getElementById('cfgScaleSlider');
   const display = document.getElementById('cfgScaleVal');
-  slider.addEventListener('input', (e) => display.textContent = parseFloat(e.target.value).toFixed(1));
+  if (slider && display) {
+    slider.addEventListener('input', (e) => {
+      display.textContent = parseFloat(e.target.value).toFixed(1);
+    });
+  }
 
   const launchBtn = document.getElementById('btnLaunchJob');
-  const progWrap = document.getElementById('jobProgressWrapper');
+  if (launchBtn) {
+    launchBtn.addEventListener('click', launchGenerationJob);
+  }
+}
+
+async function launchGenerationJob() {
+  const arch = document.getElementById('cfgArchitecture').value;
+  const targetClass = document.getElementById('cfgTargetClass').value;
+  const count = parseInt(document.getElementById('cfgBatchCount').value, 10);
+  const resolution = parseInt(document.getElementById('cfgResolution').value, 10);
+  const cfgScale = parseFloat(document.getElementById('cfgScaleSlider').value);
+  const seed = parseInt(document.getElementById('cfgSeed').value, 10);
+
+  const launchBtn = document.getElementById('btnLaunchJob');
+  const badge = document.getElementById('jobStatusBadge');
+  const progWrapper = document.getElementById('jobProgressWrapper');
   const progBar = document.getElementById('jobProgressBar');
   const progText = document.getElementById('jobProgressText');
-  const durationText = document.getElementById('jobDurationText');
-  const statusBadge = document.getElementById('jobStatusBadge');
+  const durText = document.getElementById('jobDurationText');
   const logBox = document.getElementById('terminalLogBox');
-  const resultsGrid = document.getElementById('outputPreviewGrid');
 
-  launchBtn.addEventListener('click', async () => {
-    const arch = document.getElementById('cfgArchitecture').value;
-    const targetClass = document.getElementById('cfgTargetClass').value;
-    const count = parseInt(document.getElementById('cfgBatchCount').value, 10);
-    const cfgScale = parseFloat(slider.value);
-    const seed = parseInt(document.getElementById('cfgSeed').value, 10);
-    const resolution = parseInt(document.getElementById('cfgResolution').value, 10);
+  launchBtn.disabled = true;
+  badge.textContent = 'QUEUED';
+  badge.className = 'status-badge status-warn';
+  progWrapper.style.display = 'block';
+  progBar.style.width = '10%';
+  progText.textContent = '10%';
+  durText.textContent = 'Allocating tensors...';
 
-    launchBtn.disabled = true;
-    statusBadge.textContent = 'RUNNING';
-    statusBadge.className = 'status-badge running';
-    progWrap.style.display = 'block';
-    progBar.style.width = '10%';
-    progText.textContent = '10%';
-    
-    appendLog(logBox, `[DISPATCH] Creating job on worker node...`);
+  logBox.innerHTML = `
+    <div class="log-line">[DISPATCH] Queuing synthesis job for target_class=${targetClass} using ${arch}...</div>
+  `;
 
-    try {
-      // 1. Create job
-      const createRes = await fetch('/api/jobs/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          architecture: arch,
-          target_class: targetClass,
-          count: count,
-          cfg_scale: cfgScale,
-          seed: seed,
-          resolution: resolution
-        })
-      });
-      const createData = await createRes.json();
-      const jobId = createData.job_id;
-      appendLog(logBox, `[JOB_ID] ${jobId} allocated. Running PyTorch tensors...`);
+  try {
+    // 1. Create job
+    const createRes = await fetch('/api/jobs/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        architecture: arch,
+        target_class: targetClass,
+        count: count,
+        cfg_scale: cfgScale,
+        seed: seed,
+        resolution: resolution
+      })
+    });
 
-      // 2. Execute job
-      const runRes = await fetch(`/api/jobs/${jobId}/run`, { method: 'POST' });
-      const jobResult = await runRes.json();
-
-      progBar.style.width = '100%';
-      progText.textContent = '100%';
-      durationText.textContent = `Completed in ${jobResult.duration_ms}ms`;
-      statusBadge.textContent = 'COMPLETED';
-      statusBadge.className = 'status-badge completed';
-      launchBtn.disabled = false;
-
-      jobResult.logs.forEach(l => appendLog(logBox, l));
-
-      // Display samples
-      resultsGrid.innerHTML = '';
-      jobResult.samples.forEach(s => {
-        const c = document.createElement('div');
-        c.className = 'sample-card';
-        c.innerHTML = `
-          <img class="sample-thumbnail" src="${s.url}" alt="${s.id}" />
-          <div class="sample-footer">
-            <span class="badge-label ${s.class}">${s.class}</span>
-            <span class="sample-meta-sub">${s.resolution}</span>
-          </div>
-        `;
-        c.addEventListener('click', () => openImageInspector({
-          filename: s.filename,
-          class: s.class,
-          url: s.url,
-          category: 'synthetic',
-          size_bytes: 45000,
-          created_at: Date.now() / 1000
-        }));
-        resultsGrid.appendChild(c);
-      });
-
-      // Update telemetry
-      loadInventory();
-      loadAuditData();
-
-    } catch (err) {
-      launchBtn.disabled = false;
-      statusBadge.textContent = 'FAILED';
-      appendLog(logBox, `[ERROR] Pipeline run failed: ${err.message}`);
+    if (!createRes.ok) {
+      const err = await createRes.json();
+      throw new Error(err.detail || 'Job creation failed');
     }
+
+    const { job_id } = await createRes.json();
+    state.activeJobId = job_id;
+
+    badge.textContent = 'SYNTHESIZING';
+    progBar.style.width = '40%';
+    progText.textContent = '40%';
+    logBox.innerHTML += `<div class="log-line">[SYSTEM] Job ${job_id} assigned to PyTorch GPU/MPS acceleration context.</div>`;
+
+    // 2. Run job
+    const runRes = await fetch(`/api/jobs/${job_id}/run`, { method: 'POST' });
+    const jobResult = await runRes.json();
+
+    // 3. Render telemetry
+    badge.textContent = 'COMPLETED';
+    badge.className = 'status-badge status-ok';
+    progBar.style.width = '100%';
+    progText.textContent = '100%';
+    durText.textContent = `Completed in ${jobResult.duration_ms}ms (${Math.round(jobResult.duration_ms / count)}ms/sample)`;
+
+    logBox.innerHTML = '';
+    jobResult.logs.forEach(l => {
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      line.textContent = l;
+      logBox.appendChild(line);
+    });
+    logBox.scrollTop = logBox.scrollHeight;
+
+    // Render output grid
+    renderOutputArtifacts(jobResult.samples);
+
+    // Refresh datasets & inventory
+    await loadInventory();
+    loadAuditData();
+  } catch (err) {
+    badge.textContent = 'FAILED';
+    badge.className = 'status-badge status-danger';
+    logBox.innerHTML += `<div class="log-line" style="color:var(--color-danger);">[ERROR] ${err.message}</div>`;
+  } finally {
+    launchBtn.disabled = false;
+  }
+}
+
+function renderOutputArtifacts(samples) {
+  const container = document.getElementById('outputPreviewGrid');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!samples || samples.length === 0) {
+    container.innerHTML = '<div class="placeholder-box">No artifacts generated.</div>';
+    return;
+  }
+
+  samples.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'image-card';
+    card.innerHTML = `
+      <div class="image-thumb-wrap">
+        <img src="${s.url}" alt="${s.filename}" />
+        <span class="card-badge badge-synth">${s.architecture.toUpperCase()}</span>
+      </div>
+      <div class="card-meta">
+        <span class="card-class-tag">${s.class}</span>
+        <span class="card-file-dim">${s.resolution}</span>
+      </div>
+    `;
+    card.addEventListener('click', () => openInspector({
+      url: s.url,
+      filename: s.filename,
+      class: s.class,
+      category: 'synthetic',
+      size_bytes: 42000,
+      metadata: s.metadata
+    }));
+    container.appendChild(card);
   });
 }
 
-function appendLog(box, line) {
-  const div = document.createElement('div');
-  div.className = 'log-line';
-  div.textContent = line;
-  box.appendChild(div);
-  box.scrollTop = box.scrollHeight;
-}
-
-// Quality & Audit
+// 6. Quality & Privacy Audit
 function initAudit() {
-  document.getElementById('btnRunAudit').addEventListener('click', () => loadAuditData());
+  const runBtn = document.getElementById('btnRunAudit');
+  if (runBtn) {
+    runBtn.addEventListener('click', loadAuditData);
+  }
 }
 
 async function loadAuditData() {
@@ -255,112 +461,184 @@ async function loadAuditData() {
     const res = await fetch('/api/quality/audit');
     const data = await res.json();
 
-    document.getElementById('valFid').textContent = data.metrics.fid.value;
-    document.getElementById('tagFid').textContent = data.metrics.fid.status;
+    const m = data.metrics || {};
+    
+    // Fréchet Inception Distance
+    if (m.fid) {
+      document.getElementById('valFid').textContent = m.fid.value;
+      const tag = document.getElementById('tagFid');
+      tag.textContent = m.fid.status;
+      tag.className = `kpi-tag ${m.fid.status === 'OPTIMAL' ? 'status-ok' : 'status-warn'}`;
+    }
 
-    document.getElementById('valIS').textContent = data.metrics.inception_score.value;
-    document.getElementById('tagIS').textContent = data.metrics.inception_score.status;
+    // Inception Score
+    if (m.inception_score) {
+      document.getElementById('valIS').textContent = m.inception_score.value;
+      const tag = document.getElementById('tagIS');
+      tag.textContent = m.inception_score.status;
+      tag.className = `kpi-tag ${m.inception_score.status === 'OPTIMAL' ? 'status-ok' : 'status-warn'}`;
+    }
 
-    document.getElementById('valDiv').textContent = data.metrics.diversity_index.value;
-    document.getElementById('tagDiv').textContent = data.metrics.diversity_index.status;
+    // Diversity Index
+    if (m.diversity_index) {
+      document.getElementById('valDiv').textContent = m.diversity_index.value;
+      const tag = document.getElementById('tagDiv');
+      tag.textContent = m.diversity_index.status;
+      tag.className = `kpi-tag ${m.diversity_index.status === 'OPTIMAL' ? 'status-ok' : 'status-warn'}`;
+    }
 
-    document.getElementById('valPriv').textContent = data.metrics.privacy_retention.value;
-    document.getElementById('tagPriv').textContent = data.metrics.privacy_retention.status;
+    // Privacy retention
+    if (m.privacy_retention) {
+      document.getElementById('valPriv').textContent = m.privacy_retention.value;
+      const tag = document.getElementById('tagPriv');
+      tag.textContent = m.privacy_retention.status;
+      tag.className = 'kpi-tag status-ok';
+    }
 
-    // Table
+    // Architecture Table
     const tbody = document.getElementById('archTableBody');
-    tbody.innerHTML = '';
-    data.architecture_benchmarks.forEach(b => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><strong>${b.architecture}</strong></td>
-        <td>${b.fid}</td>
-        <td>${b.diversity}</td>
-        <td>${b.throughput_fps} fps</td>
-        <td>${b.memory_mb} MB</td>
-        <td><span class="status-indicator">STANDARDIZED</span></td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    // Memorization Pairs
-    const memGrid = document.getElementById('memorizationGrid');
-    if (data.memorization_audit && data.memorization_audit.length > 0) {
-      memGrid.innerHTML = '';
-      data.memorization_audit.forEach((p, idx) => {
-        const card = document.createElement('div');
-        card.className = 'pair-card';
-        card.innerHTML = `
-          <div class="pair-images">
-            <div>
-              <img src="${p.synthetic_image}" alt="Synth" />
-              <div style="font-size:9px; color:var(--text-muted); text-align:center;">Synthetic Sample</div>
-            </div>
-            <div>
-              <img src="${p.closest_real_image}" alt="Real" />
-              <div style="font-size:9px; color:var(--text-muted); text-align:center;">Nearest Real Match</div>
-            </div>
-          </div>
-          <div class="pair-meta">
-            <span>Euclidean Distance: ${p.euclidean_distance}</span>
-            <span style="color:var(--color-success);">${p.memorization_status}</span>
-          </div>
+    if (tbody && data.architecture_benchmarks) {
+      tbody.innerHTML = '';
+      data.architecture_benchmarks.forEach(a => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${a.architecture}</strong></td>
+          <td><span class="metric-mono">${a.fid}</span></td>
+          <td><span class="metric-mono">${a.diversity}</span></td>
+          <td><span class="metric-mono">${a.throughput_fps} fps</span></td>
+          <td><span class="metric-mono">${a.memory_mb} MB</span></td>
+          <td><span class="status-badge status-ok">VERIFIED</span></td>
         `;
-        memGrid.appendChild(card);
+        tbody.appendChild(tr);
       });
-    } else {
-      memGrid.innerHTML = `<div class="placeholder-box" style="grid-column: 1/-1;">Generate more synthetic samples to execute nearest-neighbor memorization audit.</div>`;
+    }
+
+    // Memorization Audit Pairs
+    const memGrid = document.getElementById('memorizationGrid');
+    if (memGrid && data.memorization_audit) {
+      memGrid.innerHTML = '';
+      if (data.memorization_audit.length === 0) {
+        memGrid.innerHTML = '<div style="color:var(--text-muted); padding:16px;">Generate synthetic samples to perform nearest-neighbor memorization audit.</div>';
+      } else {
+        data.memorization_audit.forEach((pair, idx) => {
+          const item = document.createElement('div');
+          item.className = 'mem-pair-card';
+          item.innerHTML = `
+            <div class="mem-pair-header">
+              <span>Audit Sample #${idx + 1}</span>
+              <span class="status-badge status-ok">${pair.memorization_status}</span>
+            </div>
+            <div class="mem-images-split">
+              <div class="mem-img-box">
+                <img src="${pair.synthetic_image}" alt="Synthetic Sample" />
+                <span class="mem-img-tag">Synthesized</span>
+              </div>
+              <div class="mem-distance-indicator">
+                <span class="mem-dist-val">&Delta; L2 = ${pair.euclidean_distance}</span>
+                <span class="mem-dist-sub">Euclidean Dist</span>
+              </div>
+              <div class="mem-img-box">
+                <img src="${pair.closest_real_image}" alt="Nearest Real Sample" />
+                <span class="mem-img-tag">Closest Real</span>
+              </div>
+            </div>
+          `;
+          memGrid.appendChild(item);
+        });
+      }
     }
   } catch (err) {
-    console.error('Audit failed to load', err);
+    console.error('Failed to load audit data', err);
   }
 }
 
-// Benchmarks
+// 7. Classifier Benchmark & Research Hypothesis Engine
 function initBenchmark() {
-  document.getElementById('btnTrainBenchmark').addEventListener('click', async () => {
-    const btn = document.getElementById('btnTrainBenchmark');
-    btn.disabled = true;
-    btn.textContent = 'Training & Evaluating Models...';
-    try {
-      const res = await fetch('/api/benchmark/train', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backbone: 'ResNet-18', epochs: 15, learning_rate: 0.001 })
-      });
-      const data = await res.json();
-      btn.disabled = false;
-      btn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <polygon points="5 3 19 12 5 21 5 3"/>
-        </svg>
-        Re-Train & Evaluate CNN Models
-      `;
-      applyBenchmarkData(data);
-    } catch (err) {
-      btn.disabled = false;
-      console.error(err);
-    }
-  });
+  const trainBtn = document.getElementById('btnTrainBenchmark');
+  if (trainBtn) {
+    trainBtn.addEventListener('click', runClassifierBenchmark);
+  }
 }
 
-async function loadBenchmarkData() {
+async function runClassifierBenchmark() {
+  const trainBtn = document.getElementById('btnTrainBenchmark');
+  trainBtn.disabled = true;
+  trainBtn.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
+      <circle cx="12" cy="12" r="10"></circle>
+      <path d="M12 2a10 10 0 0 1 10 10"></path>
+    </svg>
+    Training PyTorch CNN Models (MPS)...
+  `;
+
   try {
     const res = await fetch('/api/benchmark/train', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ backbone: 'ResNet-18', epochs: 15, learning_rate: 0.001 })
+      body: JSON.stringify({
+        backbone: 'DefectConvNet-V2',
+        epochs: 10,
+        learning_rate: 0.002
+      })
     });
+
+    if (!res.ok) {
+      throw new Error('Benchmark training failed');
+    }
+
     const data = await res.json();
-    applyBenchmarkData(data);
+    state.lastBenchmarkData = data;
+    renderBenchmarkResults(data);
   } catch (err) {
-    console.error(err);
+    console.error('Failed to run benchmark', err);
+    alert('Benchmark training failed: ' + err.message);
+  } finally {
+    trainBtn.disabled = false;
+    trainBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      Train & Evaluate PyTorch CNN Models
+    `;
   }
 }
 
-function applyBenchmarkData(data) {
-  // Deltas
+function renderBenchmarkResults(data) {
   const s = data.summary_comparison;
+  const resMeta = data.research_question_result || {};
+
+  // Research Outcome Banner & Card
+  const resultCard = document.getElementById('researchResultCard');
+  if (resultCard) {
+    resultCard.style.display = 'block';
+    const headingEl = document.getElementById('resultHeadingText');
+    const explEl = document.getElementById('resultExplanationText');
+    const badgeEl = document.getElementById('hypothesisBadge');
+
+    if (resMeta.hypothesis_proven) {
+      headingEl.textContent = `Hypothesis Confirmed: Augmenting with Synthetic ${resMeta.rare_class_name} Boosts Real Unseen Recall by ${resMeta.rare_recall_delta}`;
+      badgeEl.textContent = 'PROVEN • STATISTICALLY SIGNIFICANT';
+      badgeEl.className = 'status-badge status-ok';
+    } else {
+      headingEl.textContent = `Ablation Result: Augmenting with Synthetic ${resMeta.rare_class_name} Retained Baseline Parity`;
+      badgeEl.textContent = 'EVALUATED • NEUTRAL DELTA';
+      badgeEl.className = 'status-badge status-warn';
+    }
+    explEl.textContent = resMeta.scientific_finding;
+  }
+
+  // Top Global Header Hypothesis Status
+  const topBadge = document.getElementById('hypothesisStatusText');
+  if (topBadge) {
+    if (resMeta.hypothesis_proven) {
+      topBadge.textContent = `Hypothesis Proven: ${resMeta.rare_recall_delta} Unseen Rare Recall Jump`;
+      topBadge.classList.add('proven');
+    } else {
+      topBadge.textContent = 'Baseline Parity Maintained';
+    }
+  }
+
+  // Delta Strip
   document.getElementById('baseAccVal').textContent = `${s.accuracy.baseline}%`;
   document.getElementById('augAccVal').textContent = `${s.accuracy.augmented}%`;
   document.getElementById('gainAcc').textContent = s.accuracy.delta;
@@ -369,222 +647,345 @@ function applyBenchmarkData(data) {
   document.getElementById('augF1Val').textContent = `${s.macro_f1.augmented}%`;
   document.getElementById('gainF1').textContent = s.macro_f1.delta;
 
+  const rareClass = data.rare_class || 'Minority Class';
+  const deltaTitle = document.getElementById('deltaRareTitle');
+  if (deltaTitle) {
+    deltaTitle.textContent = `Minority Class (${rareClass}) Recall on Unseen Real Test`;
+  }
+
   document.getElementById('basePotholeVal').textContent = `${s.rare_defect_recall.baseline}%`;
   document.getElementById('augPotholeVal').textContent = `${s.rare_defect_recall.augmented}%`;
-  document.getElementById('gainPothole').textContent = `${s.rare_defect_recall.delta} Gain`;
+  document.getElementById('gainPothole').textContent = s.rare_defect_recall.delta;
 
-  // Tables
+  // Update Dataset Sizes Badges
+  const baseSize = data.dataset_sizes.baseline_train;
+  const augSize = data.dataset_sizes.synthetic_augmented;
+  const valSize = data.dataset_sizes.validation_set;
+
+  document.getElementById('badgeReportBaseline').textContent = `Real Only N=${baseSize} (Val N=${valSize})`;
+  document.getElementById('badgeReportAugmented').textContent = `Real+Synth N=${augSize} (Val N=${valSize})`;
+
+  // Classification Reports Tables
   renderReportTable('tableReportBaseline', data.classification_reports.baseline);
   renderReportTable('tableReportAugmented', data.classification_reports.augmented);
 
-  // Matrices
-  renderMatrix('matrixBaseline', data.confusion_matrices.baseline);
-  renderMatrix('matrixAugmented', data.confusion_matrices.augmented);
+  // Confusion Matrices
+  renderConfusionMatrix('matrixBaseline', data.confusion_matrices.baseline);
+  renderConfusionMatrix('matrixAugmented', data.confusion_matrices.augmented);
 
-  // Charts
-  renderLossChart(data.training_curves);
-  renderValAccChart(data.training_curves);
+  // Render Charts
+  renderBenchmarkCharts();
 }
 
 function renderReportTable(tableId, report) {
-  const tbody = document.querySelector(`#${tableId} tbody`);
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
   tbody.innerHTML = '';
-  report.forEach(r => {
+
+  report.forEach(row => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${r.class}</td>
-      <td>${r.precision}</td>
-      <td>${r.recall}</td>
-      <td><strong>${r.f1_score}</strong></td>
-      <td>${r.support}</td>
+      <td><strong>${row.class}</strong></td>
+      <td><span class="metric-mono">${row.precision.toFixed(2)}</span></td>
+      <td><span class="metric-mono">${row.recall.toFixed(2)}</span></td>
+      <td><span class="metric-mono">${row.f1_score.toFixed(2)}</span></td>
+      <td><span class="metric-mono">${row.support}</span></td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-function renderMatrix(containerId, cm) {
-  const box = document.getElementById(containerId);
-  box.innerHTML = `
-    <div class="matrix-cell head">True \\ Pred</div>
-    <div class="matrix-cell head">Pothole</div>
-    <div class="matrix-cell head">Crack</div>
-    <div class="matrix-cell head">Normal</div>
-  `;
+function renderConfusionMatrix(containerId, cmData) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
 
-  cm.matrix.forEach((row, i) => {
-    box.innerHTML += `<div class="matrix-cell head">${cm.labels[i].replace('_', ' ')}</div>`;
-    row.forEach((val, j) => {
-      const isDiag = i === j;
-      const isErr = !isDiag && val > 0;
-      box.innerHTML += `<div class="matrix-cell ${isDiag ? 'diag' : (isErr ? 'err' : '')}">${val}</div>`;
+  const labels = cmData.labels;
+  const matrix = cmData.matrix;
+  const n = labels.length;
+
+  container.style.display = 'grid';
+  container.style.gridTemplateColumns = `repeat(${n + 1}, auto)`;
+  container.style.gap = '4px';
+
+  // Corner blank
+  const corner = document.createElement('div');
+  corner.className = 'cm-cell cm-header';
+  corner.textContent = 'Actual \\ Pred';
+  container.appendChild(corner);
+
+  // Header row
+  labels.forEach(l => {
+    const h = document.createElement('div');
+    h.className = 'cm-cell cm-header';
+    h.textContent = l;
+    container.appendChild(h);
+  });
+
+  // Matrix rows
+  for (let r = 0; r < n; r++) {
+    const rowLabel = document.createElement('div');
+    rowLabel.className = 'cm-cell cm-header';
+    rowLabel.textContent = labels[r];
+    container.appendChild(rowLabel);
+
+    for (let c = 0; c < n; c++) {
+      const cell = document.createElement('div');
+      const val = matrix[r][c];
+      const isDiag = (r === c);
+      cell.className = `cm-cell ${isDiag ? 'cm-diag' : (val > 0 ? 'cm-off' : '')}`;
+      cell.textContent = val;
+      container.appendChild(cell);
+    }
+  }
+}
+
+function renderBenchmarkCharts() {
+  if (!state.lastBenchmarkData) return;
+  const curves = state.lastBenchmarkData.training_curves;
+
+  // 1. Loss Chart
+  const ctxLoss = document.getElementById('chartLossConvergence');
+  if (ctxLoss) {
+    if (state.lossChart) state.lossChart.destroy();
+    state.lossChart = new Chart(ctxLoss, {
+      type: 'line',
+      data: {
+        labels: curves.epochs.map(e => `Ep ${e}`),
+        datasets: [
+          {
+            label: 'Baseline (Real Only)',
+            data: curves.loss_baseline,
+            borderColor: '#F85149',
+            backgroundColor: 'rgba(248, 81, 73, 0.1)',
+            tension: 0.3,
+            borderWidth: 2
+          },
+          {
+            label: 'Augmented (Real + Synthetic)',
+            data: curves.loss_augmented,
+            borderColor: '#2EA043',
+            backgroundColor: 'rgba(46, 160, 67, 0.1)',
+            tension: 0.3,
+            borderWidth: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#8B949E', font: { family: '-apple-system', size: 11 } } }
+        },
+        scales: {
+          x: { grid: { color: '#21262D' }, ticks: { color: '#8B949E' } },
+          y: { grid: { color: '#21262D' }, ticks: { color: '#8B949E' } }
+        }
+      }
     });
-  });
-}
+  }
 
-function renderLossChart(curves) {
-  const ctx = document.getElementById('chartLossConvergence');
-  if (!ctx) return;
-  if (state.lossChart) state.lossChart.destroy();
-
-  state.lossChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: curves.epochs.map(e => `Ep ${e}`),
-      datasets: [
-        {
-          label: 'Baseline (Real Data)',
-          data: curves.loss_baseline,
-          borderColor: '#8B949E',
-          borderWidth: 1.5,
-          pointRadius: 2,
-          tension: 0.1
-        },
-        {
-          label: 'Augmented (Real + Synthetic)',
-          data: curves.loss_augmented,
-          borderColor: '#1F6FEB',
-          borderWidth: 2,
-          pointRadius: 2,
-          tension: 0.1
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { grid: { color: '#21262D' }, ticks: { color: '#8B949E', font: { size: 10 } } },
-        y: { grid: { color: '#21262D' }, ticks: { color: '#8B949E', font: { size: 10 } } }
+  // 2. Val Acc Chart
+  const ctxAcc = document.getElementById('chartValAcc');
+  if (ctxAcc) {
+    if (state.valAccChart) state.valAccChart.destroy();
+    state.valAccChart = new Chart(ctxAcc, {
+      type: 'line',
+      data: {
+        labels: curves.epochs.map(e => `Ep ${e}`),
+        datasets: [
+          {
+            label: 'Baseline Validation Acc (%)',
+            data: curves.val_acc_baseline,
+            borderColor: '#D29922',
+            tension: 0.3,
+            borderWidth: 2
+          },
+          {
+            label: 'Augmented Validation Acc (%)',
+            data: curves.val_acc_augmented,
+            borderColor: '#388BFD',
+            tension: 0.3,
+            borderWidth: 2
+          }
+        ]
       },
-      plugins: {
-        legend: { labels: { color: '#F0F6FC', font: { size: 10 } } }
-      }
-    }
-  });
-}
-
-function renderValAccChart(curves) {
-  const ctx = document.getElementById('chartValAcc');
-  if (!ctx) return;
-  if (state.valAccChart) state.valAccChart.destroy();
-
-  state.valAccChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: curves.epochs.map(e => `Ep ${e}`),
-      datasets: [
-        {
-          label: 'Baseline Validation Accuracy (%)',
-          data: curves.val_acc_baseline,
-          borderColor: '#D29922',
-          borderWidth: 1.5,
-          pointRadius: 2,
-          tension: 0.1
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#8B949E', font: { family: '-apple-system', size: 11 } } }
         },
-        {
-          label: 'Augmented Validation Accuracy (%)',
-          data: curves.val_acc_augmented,
-          borderColor: '#2EA043',
-          borderWidth: 2,
-          pointRadius: 2,
-          tension: 0.1
+        scales: {
+          x: { grid: { color: '#21262D' }, ticks: { color: '#8B949E' } },
+          y: {
+            min: 0,
+            max: 100,
+            grid: { color: '#21262D' },
+            ticks: { color: '#8B949E', callback: v => `${v}%` }
+          }
         }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { grid: { color: '#21262D' }, ticks: { color: '#8B949E', font: { size: 10 } } },
-        y: { min: 40, max: 100, grid: { color: '#21262D' }, ticks: { color: '#8B949E', font: { size: 10 } } }
-      },
-      plugins: {
-        legend: { labels: { color: '#F0F6FC', font: { size: 10 } } }
       }
-    }
-  });
+    });
+  }
 }
 
-// Upload & Modal
+// 8. Upload Modal & Dataset Ingestion
 function initUpload() {
   const modal = document.getElementById('uploadModal');
   const openBtn = document.getElementById('btnUploadModal');
   const closeBtn = document.getElementById('btnCloseUpload');
-  const dropzone = document.getElementById('uploadDropzone');
-  const fileInput = document.getElementById('fileInput');
-  const feedback = document.getElementById('uploadFeedback');
 
-  openBtn.addEventListener('click', () => modal.classList.add('open'));
-  closeBtn.addEventListener('click', () => modal.classList.remove('open'));
-  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
+  if (openBtn) openBtn.addEventListener('click', () => modal.classList.add('active'));
+  if (closeBtn) closeBtn.addEventListener('click', () => modal.classList.remove('active'));
 
-  dropzone.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', handleFile);
+  // Switch tabs in upload modal
+  const tabZip = document.getElementById('tabUploadZip');
+  const tabSingle = document.getElementById('tabUploadSingle');
+  const secZip = document.getElementById('sectionUploadZip');
+  const secSingle = document.getElementById('sectionUploadSingle');
 
-  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.style.borderColor = 'var(--color-primary)'; });
-  dropzone.addEventListener('dragleave', () => dropzone.style.borderColor = 'var(--border-default)');
-  dropzone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropzone.style.borderColor = 'var(--border-default)';
-    if (e.dataTransfer.files.length) handleUploadFile(e.dataTransfer.files[0]);
-  });
+  if (tabZip && tabSingle) {
+    tabZip.addEventListener('click', () => {
+      tabZip.classList.add('active');
+      tabSingle.classList.remove('active');
+      secZip.style.display = 'block';
+      secSingle.style.display = 'none';
+    });
 
-  function handleFile() {
-    if (fileInput.files.length) handleUploadFile(fileInput.files[0]);
+    tabSingle.addEventListener('click', () => {
+      tabSingle.classList.add('active');
+      tabZip.classList.remove('active');
+      secSingle.style.display = 'block';
+      secZip.style.display = 'none';
+    });
   }
 
-  async function handleUploadFile(file) {
-    const targetClass = document.getElementById('uploadClassSelect').value;
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('target_class', targetClass);
+  // ZIP Upload
+  const zipDrop = document.getElementById('zipDropzone');
+  const zipInput = document.getElementById('zipFileInput');
+  if (zipDrop && zipInput) {
+    zipDrop.addEventListener('click', () => zipInput.click());
+    zipInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) handleZipUpload(e.target.files[0]);
+    });
+  }
 
-    feedback.style.display = 'block';
-    feedback.textContent = `Uploading ${file.name}...`;
-
-    try {
-      const res = await fetch('/api/dataset/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (data.status === 'SUCCESS') {
-        feedback.textContent = `Successfully ingested ${file.name} into ${targetClass}.`;
-        loadInventory();
-        loadExplorerSamples();
-        setTimeout(() => { modal.classList.remove('open'); feedback.style.display = 'none'; }, 1000);
-      }
-    } catch (err) {
-      feedback.textContent = 'Upload failed. Ensure image is JPG/PNG.';
-    }
+  // Single Image Upload
+  const singleDrop = document.getElementById('singleDropzone');
+  const fileInput = document.getElementById('fileInput');
+  if (singleDrop && fileInput) {
+    singleDrop.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) handleSingleUpload(e.target.files[0]);
+    });
   }
 }
 
-// Image Inspector Modal
-function openImageInspector(item) {
-  const modal = document.getElementById('inspectorModal');
-  const title = document.getElementById('inspectorTitle');
-  const img = document.getElementById('inspectorImage');
-  const meta = document.getElementById('inspectorMeta');
+async function handleZipUpload(file) {
+  const feedback = document.getElementById('uploadFeedback');
+  feedback.style.display = 'block';
+  feedback.style.color = '#388BFD';
+  feedback.textContent = `Uploading and extracting "${file.name}"...`;
 
-  title.textContent = `Sample: ${item.filename}`;
-  img.src = item.url;
-  meta.innerHTML = `
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const res = await fetch('/api/datasets/upload-zip', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Upload failed');
+    }
+    const result = await res.json();
+
+    feedback.style.color = '#2EA043';
+    feedback.textContent = `Dataset "${file.name}" successfully extracted and activated with ${result.dataset.classes.length} classes!`;
+
+    // Reload available datasets & inventory
+    await loadAvailableDatasets();
+    setTimeout(() => {
+      document.getElementById('uploadModal').classList.remove('active');
+      feedback.style.display = 'none';
+    }, 1500);
+  } catch (err) {
+    feedback.style.color = '#F85149';
+    feedback.textContent = `Upload error: ${err.message}`;
+  }
+}
+
+async function handleSingleUpload(file) {
+  const targetClass = document.getElementById('uploadClassSelect').value;
+  const feedback = document.getElementById('uploadFeedback');
+  feedback.style.display = 'block';
+  feedback.style.color = '#388BFD';
+  feedback.textContent = `Uploading image to class '${targetClass}'...`;
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('target_class', targetClass);
+
+  try {
+    const res = await fetch('/api/dataset/upload', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('Upload failed');
+
+    feedback.style.color = '#2EA043';
+    feedback.textContent = `Uploaded sample to ${targetClass}!`;
+
+    await loadInventory();
+    loadExplorerSamples();
+    setTimeout(() => {
+      document.getElementById('uploadModal').classList.remove('active');
+      feedback.style.display = 'none';
+    }, 1200);
+  } catch (err) {
+    feedback.style.color = '#F85149';
+    feedback.textContent = `Error: ${err.message}`;
+  }
+}
+
+// 9. Export Dataset Archive
+function initExport() {
+  const btn = document.getElementById('btnHeaderExport');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      window.location.href = '/api/export/archive?format=raw';
+    });
+  }
+}
+
+// 10. Image Detail Inspector
+function initInspector() {
+  const modal = document.getElementById('inspectorModal');
+  const closeBtn = document.getElementById('btnCloseInspector');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => modal.classList.remove('active'));
+  }
+}
+
+function openInspector(item) {
+  const modal = document.getElementById('inspectorModal');
+  document.getElementById('inspectorTitle').textContent = `Sample: ${item.filename}`;
+  document.getElementById('inspectorImage').src = item.url;
+
+  const metaEl = document.getElementById('inspectorMeta');
+  let metaHtml = `
+    <div><strong>Dataset:</strong> ${state.inventory ? state.inventory.dataset_id : 'active'}</div>
     <div><strong>Class:</strong> ${item.class}</div>
-    <div><strong>Source Split:</strong> ${item.category}</div>
-    <div><strong>Format:</strong> JPEG RGB (256x256)</div>
+    <div><strong>Category:</strong> ${item.category.toUpperCase()}</div>
+    <div><strong>Resolution:</strong> 256 x 256 RGB</div>
     <div><strong>File Size:</strong> ${Math.round(item.size_bytes / 1024)} KB</div>
-    <div><strong>Resource URI:</strong> ${item.url}</div>
-    <div style="margin-top: 10px;">
-      <a href="${item.url}" download="${item.filename}" class="action-btn" style="display:inline-flex;">Download File</a>
-    </div>
+    <div><strong>Storage Path:</strong> ${item.url}</div>
   `;
 
-  modal.classList.add('open');
-  document.getElementById('btnCloseInspector').onclick = () => modal.classList.remove('open');
-  modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('open'); };
-}
+  if (item.metadata) {
+    metaHtml += `<div style="margin-top:8px; border-top:1px solid var(--border-default); padding-top:6px;"><strong>Generative Parameters:</strong></div>`;
+    for (const [k, v] of Object.entries(item.metadata)) {
+      metaHtml += `<div>&bull; ${k}: <span style="color:#58A6FF;">${typeof v === 'object' ? JSON.stringify(v) : v}</span></div>`;
+    }
+  }
 
-// Export Handler
-function initExport() {
-  document.getElementById('btnHeaderExport').addEventListener('click', () => {
-    window.location.href = '/api/export/archive?format=raw';
-  });
+  metaEl.innerHTML = metaHtml;
+  modal.classList.add('active');
 }

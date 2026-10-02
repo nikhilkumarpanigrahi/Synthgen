@@ -10,23 +10,24 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .dataset_manager import (
-    init_default_dataset,
-    get_dataset_inventory,
-    get_samples_list,
-    save_uploaded_image,
-    DATA_DIR,
-    REAL_DIR,
-    SYNTH_DIR,
-    CLASSES
+    initialize_domain_datasets,
+    get_available_datasets,
+    inspect_dataset_inventory,
+    get_dataset_samples,
+    set_active_dataset_id,
+    get_active_dataset_id,
+    get_dataset_base_paths,
+    ingest_custom_zip,
+    DATA_DIR
 )
 from .generator import GenerationPipeline, JOBS_REGISTRY
 from .evaluator import QualityAssuranceEngine
 from .cnn_trainer import DownstreamClassifierBenchmark
 
 app = FastAPI(
-    title="Synthetix ML Platform",
-    description="Enterprise Synthetic Data Generation and Quality Assurance Platform for Computer Vision",
-    version="2.0.0"
+    title="Synthetic Data Generator Platform",
+    description="Scientific Deep-Learning Synthetic Data Generation & Minority-Class Augmentation Platform",
+    version="2.1.0"
 )
 
 app.add_middleware(
@@ -41,35 +42,63 @@ pipeline = GenerationPipeline()
 qa_engine = QualityAssuranceEngine()
 benchmark_engine = DownstreamClassifierBenchmark()
 
+class DatasetSelectRequest(BaseModel):
+    dataset_id: str
+
 class JobCreateRequest(BaseModel):
     architecture: str = "diffusion"  # diffusion, gan, vae, augmentation
-    target_class: str = "pothole"
+    target_class: str
     count: int = 8
     cfg_scale: float = 7.5
     seed: int = 42
     resolution: int = 256
 
 class BenchmarkRunRequest(BaseModel):
-    backbone: str = "ResNet-18"
-    epochs: int = 15
-    learning_rate: float = 0.001
+    backbone: str = "DefectConvNet-V2"
+    epochs: int = 12
+    learning_rate: float = 0.002
 
 @app.on_event("startup")
 def startup_event():
-    init_default_dataset()
+    # Bootstrap multi-domain datasets if not present
+    initialize_domain_datasets()
 
 @app.get("/api/system/status")
 def system_status():
+    import torch
+    dev = "Apple Silicon MPS (Metal)" if torch.backends.mps.is_available() else ("CUDA" if torch.cuda.is_available() else "CPU")
     return {
         "status": "HEALTHY",
-        "version": "2.0.0",
-        "engine": "PyTorch 2.14 Cuda/MPS Accelerated",
-        "storage": DATA_DIR
+        "version": "2.1.0",
+        "engine": f"PyTorch {torch.__version__} ({dev})",
+        "storage": DATA_DIR,
+        "active_dataset": get_active_dataset_id()
     }
+
+@app.get("/api/datasets/available")
+def list_available_datasets():
+    return get_available_datasets()
+
+@app.post("/api/datasets/select")
+def select_dataset(req: DatasetSelectRequest):
+    set_active_dataset_id(req.dataset_id)
+    initialize_domain_datasets()
+    return inspect_dataset_inventory(req.dataset_id)
+
+@app.post("/api/datasets/upload-zip")
+async def upload_custom_dataset_zip(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only .zip archives containing class subdirectories are supported.")
+    content = await file.read()
+    if len(content) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Archive exceeds maximum size limit of 100MB.")
+    
+    result = ingest_custom_zip(content, file.filename)
+    return {"status": "SUCCESS", "dataset": result}
 
 @app.get("/api/dataset/inventory")
 def dataset_inventory():
-    return get_dataset_inventory()
+    return inspect_dataset_inventory()
 
 @app.get("/api/dataset/samples")
 def dataset_samples(
@@ -78,20 +107,14 @@ def dataset_samples(
     limit: int = Query(40, le=200),
     offset: int = Query(0, ge=0)
 ):
-    return get_samples_list(category=category, target_class=class_name, limit=limit, offset=offset)
-
-@app.post("/api/dataset/upload")
-async def upload_image(file: UploadFile = File(...), target_class: str = Form("pothole")):
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Max file size 10MB")
-    res = save_uploaded_image(content, file.filename, target_class)
-    return {"status": "SUCCESS", "uploaded": res}
+    return get_dataset_samples(category=category, class_name=class_name, limit=limit, offset=offset)
 
 @app.post("/api/jobs/create")
 def create_job(req: JobCreateRequest):
-    if req.target_class not in CLASSES:
-        raise HTTPException(status_code=400, detail=f"Invalid class. Allowed: {CLASSES}")
+    inv = inspect_dataset_inventory()
+    if req.target_class not in inv["classes"]:
+        raise HTTPException(status_code=400, detail=f"Invalid class '{req.target_class}'. Available classes in active dataset: {inv['classes']}")
+    
     job_id = pipeline.create_job(
         architecture=req.architecture,
         target_class=req.target_class,
@@ -130,24 +153,29 @@ def run_benchmark(req: BenchmarkRunRequest):
 
 @app.get("/api/export/archive")
 def export_archive(format: str = Query("raw", enum=["raw", "yolo", "coco"])):
+    ds_id = get_active_dataset_id()
+    real_dir, synth_dir = get_dataset_base_paths(ds_id)
+    inv = inspect_dataset_inventory(ds_id)
+    classes = inv["classes"]
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         manifest = {
+            "dataset_id": ds_id,
             "format": format,
-            "classes": CLASSES,
+            "classes": classes,
             "exported_at": os.environ.get("TIMESTAMP", "2026-10-02"),
             "items": []
         }
         
-        for category in ["real", "synthetic"]:
-            base = REAL_DIR if category == "real" else SYNTH_DIR
-            for c in CLASSES:
+        for category, base in [("real", real_dir), ("synthetic", synth_dir)]:
+            for c in classes:
                 cdir = os.path.join(base, c)
                 if os.path.exists(cdir):
-                    for f in os.listdir(cdir):
-                        if f.endswith((".jpg", ".png")):
+                    for f in sorted(os.listdir(cdir)):
+                        if f.lower().endswith((".jpg", ".png", ".jpeg")):
                             src = os.path.join(cdir, f)
-                            arc_name = f"dataset/{category}/{c}/{f}"
+                            arc_name = f"{ds_id}/{category}/{c}/{f}"
                             zf.write(src, arcname=arc_name)
                             manifest["items"].append({
                                 "file": arc_name,
@@ -155,16 +183,17 @@ def export_archive(format: str = Query("raw", enum=["raw", "yolo", "coco"])):
                                 "split": category
                             })
                             
-        zf.writestr("dataset/manifest.json", json.dumps(manifest, indent=2))
+        zf.writestr(f"{ds_id}/manifest.json", json.dumps(manifest, indent=2))
         
     zip_buffer.seek(0)
+    safe_name = ds_id.replace("/", "_")
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename=synthetix_dataset_{format}.zip"}
+        headers={"Content-Disposition": f"attachment; filename=synthetic_augmented_{safe_name}.zip"}
     )
 
-# Static file serving
+# Static file mounts
 app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")

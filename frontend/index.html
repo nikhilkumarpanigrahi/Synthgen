@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Synthetix ML — Synthetic Data Engine</title>
+  <title>Synthetix ML — Synthetic Data Generation & Minority-Class Augmentation</title>
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -19,40 +19,63 @@
           <span class="logo-name">SYNTHETIX</span>
         </div>
         <div class="divider-v"></div>
-        <div class="workspace-crumb">
-          <span class="crumb-dim">projects</span>
-          <span class="crumb-slash">/</span>
-          <span class="crumb-active">road_surface_defects</span>
-          <span class="status-indicator">v2.1</span>
+        <div class="dataset-switcher-wrap">
+          <label for="datasetSelector" class="dataset-select-label">ACTIVE DOMAIN:</label>
+          <select id="datasetSelector" class="data-select dataset-select-top">
+            <option value="road_defects">Civil Infrastructure: Road Defects</option>
+            <option value="medical_imaging">Dermatology: Pigmented Skin Lesions</option>
+            <option value="industrial_defects">Manufacturing: Steel Surface Defects</option>
+          </select>
         </div>
       </div>
 
       <div class="header-right">
         <div class="device-pill">
           <span class="dot-online"></span>
-          <span id="deviceStatusText">Engine: Active (PyTorch)</span>
+          <span id="deviceStatusText">Engine: PyTorch MPS (Apple Silicon Metal)</span>
         </div>
         <div class="divider-v"></div>
         <button class="action-btn" id="btnUploadModal">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
           </svg>
-          Upload Data
+          Ingest Dataset / Upload
         </button>
         <button class="action-btn action-primary" id="btnHeaderExport">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
           </svg>
-          Export Dataset
+          Export Dataset (.zip)
         </button>
       </div>
     </header>
+
+    <!-- Global Research Question Banner -->
+    <div class="research-banner">
+      <div class="research-banner-left">
+        <div class="research-badge-pill">CORE RESEARCH QUESTION</div>
+        <div class="research-text-group">
+          <span class="research-question">
+            &ldquo;Can deep-learning synthetic image generation for an underrepresented class improve downstream classifier performance on real unseen samples of that class?&rdquo;
+          </span>
+          <span class="research-context" id="researchContextText">
+            Analyzing class distribution imbalance &bull; Auto-detecting minority class &bull; Evaluating held-out real test split
+          </span>
+        </div>
+      </div>
+      <div class="research-banner-right">
+        <div class="hypothesis-status-card" id="hypothesisBannerBadge">
+          <span class="hypothesis-label">HYPOTHESIS STATUS</span>
+          <span class="hypothesis-val" id="hypothesisStatusText">Awaiting Model Benchmark</span>
+        </div>
+      </div>
+    </div>
 
     <!-- Main Workspace -->
     <div class="workspace-body">
       <!-- Left Navigation Sidebar -->
       <aside class="sidebar-nav">
-        <div class="nav-section-title">PLATFORM</div>
+        <div class="nav-section-title">WORKFLOW PIPELINE</div>
         <button class="nav-item active" data-view="datasets">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="7" height="7"/>
@@ -60,19 +83,19 @@
             <rect x="14" y="14" width="7" height="7"/>
             <rect x="3" y="14" width="7" height="7"/>
           </svg>
-          Dataset Explorer
+          1. Dataset Explorer
         </button>
         <button class="nav-item" data-view="pipelines">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
-          Generative Pipelines
+          2. Generative Synthesis
         </button>
         <button class="nav-item" data-view="quality">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
-          Quality & Audit
+          3. Quality & Privacy Audit
         </button>
         <button class="nav-item" data-view="benchmarks">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -80,23 +103,49 @@
             <line x1="12" y1="20" x2="12" y2="4"/>
             <line x1="6" y1="20" x2="6" y2="14"/>
           </svg>
-          Model Benchmarks
+          4. Classifier Benchmark
         </button>
 
-        <div class="nav-section-title" style="margin-top: 1.5rem;">STORAGE METRICS</div>
+        <div class="nav-section-title" style="margin-top: 1.5rem;">ACTIVE DATASET TELEMETRY</div>
         <div class="sidebar-telemetry">
           <div class="telemetry-row">
+            <span>Domain</span>
+            <strong id="sideDomainId" style="font-size: 11px;">road_defects</strong>
+          </div>
+          <div class="telemetry-row">
             <span>Real Training Images</span>
-            <strong id="sideRealCount">116</strong>
+            <strong id="sideRealCount">0</strong>
           </div>
           <div class="telemetry-row">
             <span>Synthetic Generated</span>
             <strong id="sideSynthCount">0</strong>
           </div>
           <div class="telemetry-row">
-            <span>Current Imbalance</span>
-            <strong id="sideImbalance">1 : 2.50</strong>
+            <span>Imbalance Ratio</span>
+            <strong id="sideImbalance" class="status-warn">--</strong>
           </div>
+          <div class="telemetry-row">
+            <span>Underrepresented Class</span>
+            <strong id="sideRareClass" class="status-warn">--</strong>
+          </div>
+          <div class="telemetry-row">
+            <span>Augmentation Quota</span>
+            <strong id="sideQuota">--</strong>
+          </div>
+        </div>
+
+        <div class="sidebar-info-card">
+          <div class="info-card-header">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span>Universal Dataset Support</span>
+          </div>
+          <p class="info-card-body">
+            Upload any custom image classification archive (.zip) with subfolders for each class. Synthetix will automatically profile distribution, detect the minority class, and generate balancing samples.
+          </p>
         </div>
       </aside>
 
@@ -112,10 +161,7 @@
                 <button class="seg-btn" data-cat="synthetic">Synthetic Dataset</button>
               </div>
               <select id="classFilter" class="data-select">
-                <option value="">All Classes (All)</option>
-                <option value="pothole">Class: pothole</option>
-                <option value="surface_crack">Class: surface_crack</option>
-                <option value="normal_road">Class: normal_road</option>
+                <option value="">All Classes</option>
               </select>
             </div>
             <div class="toolbar-right">
@@ -124,33 +170,13 @@
             </div>
           </div>
 
-          <!-- Dataset Statistics Summary Bar -->
-          <div class="metrics-strip">
-            <div class="strip-item">
-              <span class="strip-label">Class: Pothole</span>
-              <span class="strip-val" id="cntPothole">0</span>
-              <span class="strip-sub status-warn">Minority Class</span>
-            </div>
-            <div class="strip-item">
-              <span class="strip-label">Class: Surface Crack</span>
-              <span class="strip-val" id="cntCrack">0</span>
-              <span class="strip-sub">Moderate</span>
-            </div>
-            <div class="strip-item">
-              <span class="strip-label">Class: Normal Road</span>
-              <span class="strip-val" id="cntNormal">0</span>
-              <span class="strip-sub status-ok">Majority Class</span>
-            </div>
-            <div class="strip-item">
-              <span class="strip-label">Total In Repository</span>
-              <span class="strip-val" id="cntTotalAll">0</span>
-              <span class="strip-sub">256x256 RGB</span>
-            </div>
+          <!-- Dataset Statistics Summary Bar (Dynamically Rendered) -->
+          <div class="metrics-strip" id="dynamicClassStrip">
+            <!-- Dynamically populated per class -->
           </div>
 
-          <!-- Image Grid Container with Skeleton Placeholder Support -->
+          <!-- Image Grid Container -->
           <div class="explorer-grid" id="explorerGrid">
-            <!-- Skeleton items loaded initially -->
             <div class="skeleton-card"></div>
             <div class="skeleton-card"></div>
             <div class="skeleton-card"></div>
@@ -166,33 +192,32 @@
             <!-- Left: Job Configuration Form -->
             <div class="pipeline-config-card">
               <div class="card-header">
-                <h3>Pipeline Configuration</h3>
-                <span class="header-tag">Job Dispatcher</span>
+                <h3>Generative Model Configuration</h3>
+                <span class="header-tag">PyTorch MPS Engine</span>
+              </div>
+
+              <div class="field-block">
+                <label class="field-label">Target Rare/Minority Class</label>
+                <select id="cfgTargetClass" class="data-select full-width">
+                  <!-- Populated dynamically with active classes -->
+                </select>
+                <span class="field-hint" id="cfgRareHint">Auto-selected minority class to compensate data scarcity.</span>
               </div>
 
               <div class="field-block">
                 <label class="field-label">Model Architecture</label>
                 <select id="cfgArchitecture" class="data-select full-width">
-                  <option value="diffusion" selected>Latent Diffusion (DDPM / Denoising Scheduler)</option>
-                  <option value="gan">StyleGAN-v2 (Adversarial Generator)</option>
-                  <option value="vae">Beta-VAE (Disentangled Latent Manifold)</option>
-                  <option value="augmentation">Auto-Augment (Geometric & Photometric)</option>
-                </select>
-              </div>
-
-              <div class="field-block">
-                <label class="field-label">Target Defect Class</label>
-                <select id="cfgTargetClass" class="data-select full-width">
-                  <option value="pothole" selected>pothole (Compensate Minority Defect)</option>
-                  <option value="surface_crack">surface_crack</option>
-                  <option value="normal_road">normal_road</option>
+                  <option value="diffusion" selected>Latent Diffusion (DDPM / Neural Latent Decoder)</option>
+                  <option value="gan">StyleGAN-v2 (Deep Convolutional Generator)</option>
+                  <option value="vae">Beta-VAE (Disentangled Variational Autoencoder)</option>
+                  <option value="augmentation">Auto-Augment (Geometric & Photometric Policy)</option>
                 </select>
               </div>
 
               <div class="field-grid-2">
                 <div class="field-block">
                   <label class="field-label">Batch Count</label>
-                  <input type="number" id="cfgBatchCount" class="data-input" value="8" min="1" max="32">
+                  <input type="number" id="cfgBatchCount" class="data-input" value="8" min="1" max="64">
                 </div>
                 <div class="field-block">
                   <label class="field-label">Resolution</label>
@@ -262,7 +287,7 @@
         <section class="view-panel" id="view-quality">
           <div class="view-toolbar">
             <div>
-              <h2 class="view-heading">Generative Quality Assurance Audit</h2>
+              <h2 class="view-heading">Generative Quality & Privacy Assurance Audit</h2>
               <p class="view-sub">Statistical distribution alignment, feature diversity, and non-memorization validation.</p>
             </div>
             <button class="btn-sm" id="btnRunAudit">Run Full Audit</button>
@@ -276,7 +301,7 @@
                 <span class="kpi-tag" id="tagFid">CALCULATING</span>
               </div>
               <div class="kpi-value" id="valFid">--</div>
-              <div class="kpi-target">Threshold: &lt; 30.0 (Lower is better)</div>
+              <div class="kpi-target">Threshold: &lt; 30.0 (Distribution Divergence)</div>
             </div>
 
             <div class="kpi-card">
@@ -285,7 +310,7 @@
                 <span class="kpi-tag" id="tagIS">CALCULATING</span>
               </div>
               <div class="kpi-value" id="valIS">--</div>
-              <div class="kpi-target">Threshold: &gt; 3.00 (Higher is better)</div>
+              <div class="kpi-target">Threshold: &gt; 3.00 (Conditional Certainty)</div>
             </div>
 
             <div class="kpi-card">
@@ -294,7 +319,7 @@
                 <span class="kpi-tag" id="tagDiv">CALCULATING</span>
               </div>
               <div class="kpi-value" id="valDiv">--</div>
-              <div class="kpi-target">Pairwise distance (Prevents mode collapse)</div>
+              <div class="kpi-target">Pairwise distance (Protects against mode collapse)</div>
             </div>
 
             <div class="kpi-card">
@@ -346,17 +371,31 @@
         <section class="view-panel" id="view-benchmarks">
           <div class="view-toolbar">
             <div>
-              <h2 class="view-heading">Downstream Defect Classifier Benchmark</h2>
-              <p class="view-sub">Quantitative ablation: Baseline (Real-Only) vs Augmented (Real + Synthetic).</p>
+              <h2 class="view-heading">Downstream Classifier Ablation Benchmark</h2>
+              <p class="view-sub">Quantitative ablation: Baseline (Real-Only) vs Augmented (Real + Synthetic) evaluated on identical held-out real test set.</p>
             </div>
             <div class="toolbar-right">
               <button class="btn-execute" id="btnTrainBenchmark">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                   <polygon points="5 3 19 12 5 21 5 3"/>
                 </svg>
-                Train & Evaluate CNN Models
+                Train & Evaluate PyTorch CNN Models
               </button>
             </div>
+          </div>
+
+          <!-- Dedicated Research Hypothesis Verification Card -->
+          <div class="research-result-card" id="researchResultCard" style="display: none;">
+            <div class="result-header">
+              <div class="result-title-group">
+                <span class="result-badge-label">EMPIRICAL HYPOTHESIS TEST OUTCOME</span>
+                <h3 class="result-heading" id="resultHeadingText">Hypothesis Confirmed: Generative Augmentation Boosts Unseen Minority Class Performance</h3>
+              </div>
+              <span class="status-badge status-ok" id="hypothesisBadge">PROVEN &bull; STATISTICALLY SIGNIFICANT</span>
+            </div>
+            <p class="result-explanation" id="resultExplanationText">
+              Augmenting the training distribution with synthetic rare samples increased real unseen test recall, confirming that learned generative representations generalize to real-world out-of-sample data.
+            </p>
           </div>
 
           <!-- Comparison Delta Strip -->
@@ -382,7 +421,7 @@
             </div>
 
             <div class="delta-box alert-gain">
-              <span class="delta-title">Minority Defect (Pothole) Recall</span>
+              <span class="delta-title" id="deltaRareTitle">Minority Class Recall on Unseen Real Test</span>
               <div class="delta-values">
                 <span class="val-old" id="basePotholeVal">--</span>
                 <span class="val-arrow">&rarr;</span>
@@ -396,7 +435,7 @@
           <div class="benchmark-charts-split">
             <div class="chart-card">
               <div class="card-header">
-                <h3>Cross-Entropy Loss Convergence (15 Epochs)</h3>
+                <h3>Cross-Entropy Loss Convergence (PyTorch AdamW)</h3>
               </div>
               <div class="chart-box">
                 <canvas id="chartLossConvergence"></canvas>
@@ -404,7 +443,7 @@
             </div>
             <div class="chart-card">
               <div class="card-header">
-                <h3>Validation Accuracy Progression</h3>
+                <h3>Validation Accuracy Progression (Held-Out Real Test)</h3>
               </div>
               <div class="chart-box">
                 <canvas id="chartValAcc"></canvas>
@@ -417,7 +456,7 @@
             <div class="data-table-card">
               <div class="card-header">
                 <h3>Model A: Baseline (Trained on Real Data Only)</h3>
-                <span class="header-tag status-warn">Imbalanced N=116</span>
+                <span class="header-tag status-warn" id="badgeReportBaseline">Imbalanced Real</span>
               </div>
               <table class="data-table" id="tableReportBaseline">
                 <thead>
@@ -436,7 +475,7 @@
             <div class="data-table-card">
               <div class="card-header">
                 <h3>Model B: Augmented (Trained on Real + Synthetic Data)</h3>
-                <span class="header-tag status-ok">Balanced N=250</span>
+                <span class="header-tag status-ok" id="badgeReportAugmented">Balanced Real+Synth</span>
               </div>
               <table class="data-table" id="tableReportAugmented">
                 <thead>
@@ -456,11 +495,11 @@
           <!-- Confusion Matrices Comparison -->
           <div class="cm-split-container">
             <div class="cm-card">
-              <h4>Confusion Matrix — Baseline Model</h4>
+              <h4>Confusion Matrix — Baseline Model (Real Data Only)</h4>
               <div class="matrix-grid" id="matrixBaseline"></div>
             </div>
             <div class="cm-card">
-              <h4>Confusion Matrix — Synthetic Augmented Model</h4>
+              <h4>Confusion Matrix — Synthetic Augmented Model (Real + Synthetic)</h4>
               <div class="matrix-grid" id="matrixAugmented"></div>
             </div>
           </div>
@@ -474,27 +513,49 @@
   <div class="modal-backdrop" id="uploadModal">
     <div class="modal-dialog">
       <div class="modal-header-clean">
-        <h3>Ingest Custom Image Sample</h3>
+        <h3>Ingest Custom Dataset / Samples</h3>
         <button class="modal-close" id="btnCloseUpload">&times;</button>
       </div>
       <div class="modal-content-clean">
-        <div class="field-block">
-          <label class="field-label">Defect Class Label</label>
-          <select id="uploadClassSelect" class="data-select full-width">
-            <option value="pothole">pothole</option>
-            <option value="surface_crack">surface_crack</option>
-            <option value="normal_road">normal_road</option>
-          </select>
+        <div class="segmented-control" style="margin-bottom: 1rem;">
+          <button class="seg-btn active" id="tabUploadZip">Ingest Dataset (.zip)</button>
+          <button class="seg-btn" id="tabUploadSingle">Upload Single Image</button>
         </div>
-        <div class="dropzone" id="uploadDropzone">
-          <input type="file" id="fileInput" accept="image/png, image/jpeg" style="display: none;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-          </svg>
-          <p class="dropzone-text">Click to browse or drag image file here</p>
-          <span class="dropzone-sub">Supported formats: JPG, PNG (Max 10MB)</span>
+
+        <!-- Section A: ZIP Upload -->
+        <div id="sectionUploadZip">
+          <p class="field-hint" style="margin-bottom: 12px;">
+            Upload any .zip archive containing image folders named by class (e.g. <code>dogs/</code>, <code>cats/</code>, or <code>defect_a/</code>, <code>defect_b/</code>). Synthetix will extract it, analyze class balance, and immediately load it.
+          </p>
+          <div class="dropzone" id="zipDropzone">
+            <input type="file" id="zipFileInput" accept=".zip" style="display: none;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+            </svg>
+            <p class="dropzone-text">Click or drag full dataset .zip archive here</p>
+            <span class="dropzone-sub">Max 100MB &bull; Automatic class discovery</span>
+          </div>
         </div>
-        <div id="uploadFeedback" style="margin-top: 10px; font-size: 0.8rem; display: none;"></div>
+
+        <!-- Section B: Single Image Upload -->
+        <div id="sectionUploadSingle" style="display: none;">
+          <div class="field-block">
+            <label class="field-label">Target Class</label>
+            <select id="uploadClassSelect" class="data-select full-width">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+          <div class="dropzone" id="singleDropzone">
+            <input type="file" id="fileInput" accept="image/png, image/jpeg" style="display: none;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+            </svg>
+            <p class="dropzone-text">Click to browse or drag image file here</p>
+            <span class="dropzone-sub">Supported formats: JPG, PNG (Max 10MB)</span>
+          </div>
+        </div>
+
+        <div id="uploadFeedback" style="margin-top: 10px; font-size: 0.85rem; display: none;"></div>
       </div>
     </div>
   </div>
