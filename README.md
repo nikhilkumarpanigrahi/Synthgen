@@ -1,3 +1,14 @@
+---
+title: Synthgen
+emoji: ⚡
+colorFrom: gray
+colorTo: black
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+---
+
 # Synthgen: Autonomous Agentic Synthetic Data Generation Platform
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)

@@ -17,11 +17,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Expose standard port
-EXPOSE 8080
+# Expose Hugging Face Spaces standard port
+EXPOSE 7860
 
 # Environment variables
-ENV PORT=8080
+ENV PORT=7860
 ENV PYTHONUNBUFFERED=1
 
 # Launch server
