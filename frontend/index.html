@@ -188,24 +188,22 @@
             </div>
           </div>
           <button class="btn-one-click" id="btnAutoRunExperiment">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"/>
             </svg>
-            <span>⚡ 1-Click Run Full Experiment</span>
+            <span>Run Full Experiment</span>
           </button>
         </div>
 
-        <!-- Friendly Quick Concept Card -->
+        <!-- Quick Methodology Overview -->
         <div class="quick-guide-banner" id="quickGuideBanner">
           <div class="guide-content">
-            <strong>💡 How this works in 3 steps:</strong>
+            <strong>Experimental Design:</strong>
             <span>
-              1️⃣ Real-world datasets often have very few samples for critical rare classes (e.g. potholes, rare tumors, or hairline cracks).
-              2️⃣ We use Generative AI to synthesize realistic samples for that rare class.
-              3️⃣ We train two neural networks and test on <strong>real unseen images</strong> to prove if synthetic data improves real-world accuracy.
+              1. Profile dataset imbalance. 2. Synthesize minority-class samples via generative models. 3. Train dual classifiers and evaluate on held-out real unseen test partitions.
             </span>
           </div>
-          <button class="guide-dismiss" id="btnDismissGuide">&times;</button>
+          <button class="guide-dismiss" id="btnDismissGuide" title="Dismiss">&times;</button>
         </div>
 
         <!-- VIEW 1: DATASET EXPLORER -->

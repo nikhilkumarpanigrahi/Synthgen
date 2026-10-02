@@ -88,13 +88,7 @@ function initGuidedWorkflow() {
 async function runFullAutoExperiment() {
   const btn = document.getElementById('btnAutoRunExperiment');
   btn.disabled = true;
-  btn.innerHTML = `
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
-      <circle cx="12" cy="12" r="10"></circle>
-      <path d="M12 2a10 10 0 0 1 10 10"></path>
-    </svg>
-    <span>Running Complete Experiment...</span>
-  `;
+  btn.innerHTML = `<span>Training and evaluating pipeline...</span>`;
 
   try {
     // Step 1: Ensure dataset inventory is loaded
@@ -133,10 +127,10 @@ async function runFullAutoExperiment() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = `
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5 3 19 12 5 21 5 3"/>
       </svg>
-      <span>⚡ 1-Click Run Full Experiment</span>
+      <span>Run Full Experiment</span>
     `;
   }
 }
@@ -238,7 +232,7 @@ async function loadInventory() {
     // Header Research Context
     const researchCtx = document.getElementById('researchContextText');
     if (researchCtx) {
-      researchCtx.innerHTML = `Active Dataset: <strong>${data.dataset_id}</strong> &bull; Auto-Detected Minority: <span style="color:#D29922; font-weight:600;">${rareClass}</span> (${analysis.minority_count} real vs ${analysis.majority_count} majority, ${imbalanceRatio}x imbalance) &bull; Target Quota: +${quota} to balance`;
+      researchCtx.innerHTML = `Active Dataset: <strong>${data.dataset_id}</strong> &bull; Minority Class: <span style="color:#D97706; font-weight:600;">${rareClass}</span> (${analysis.minority_count} real vs ${analysis.majority_count} majority, ${imbalanceRatio}x imbalance) &bull; Target Quota: +${quota} to balance`;
     }
 
     // Dynamic Class Metrics Strip
@@ -263,7 +257,7 @@ async function loadInventory() {
       data.classes.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c;
-        opt.textContent = (c === rareClass) ? `${c} ★ (Compensate Rare Scarcity)` : c;
+        opt.textContent = (c === rareClass) ? `${c} (Minority Class)` : c;
         if (c === rareClass) opt.selected = true;
         targetSelect.appendChild(opt);
       });
@@ -656,13 +650,7 @@ function initBenchmark() {
 async function runClassifierBenchmark() {
   const trainBtn = document.getElementById('btnTrainBenchmark');
   trainBtn.disabled = true;
-  trainBtn.innerHTML = `
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
-      <circle cx="12" cy="12" r="10"></circle>
-      <path d="M12 2a10 10 0 0 1 10 10"></path>
-    </svg>
-    Training PyTorch CNN Models (MPS)...
-  `;
+  trainBtn.innerHTML = `<span>Training PyTorch CNN Models (MPS)...</span>`;
 
   try {
     const res = await fetch('/api/benchmark/train', {
@@ -850,18 +838,21 @@ function renderBenchmarkCharts() {
           {
             label: 'Baseline (Real Only)',
             data: curves.loss_baseline,
-            borderColor: '#F85149',
-            backgroundColor: 'rgba(248, 81, 73, 0.1)',
-            tension: 0.3,
-            borderWidth: 2
+            borderColor: '#666666',
+            backgroundColor: 'transparent',
+            tension: 0.2,
+            borderWidth: 1.5,
+            borderDash: [4, 4],
+            pointRadius: 2
           },
           {
             label: 'Augmented (Real + Synthetic)',
             data: curves.loss_augmented,
-            borderColor: '#2EA043',
-            backgroundColor: 'rgba(46, 160, 67, 0.1)',
-            tension: 0.3,
-            borderWidth: 2
+            borderColor: '#FFFFFF',
+            backgroundColor: 'transparent',
+            tension: 0.2,
+            borderWidth: 2,
+            pointRadius: 2
           }
         ]
       },
@@ -869,11 +860,11 @@ function renderBenchmarkCharts() {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { labels: { color: '#8B949E', font: { family: '-apple-system', size: 11 } } }
+          legend: { labels: { color: '#9E9E9E', font: { family: '-apple-system', size: 11 } } }
         },
         scales: {
-          x: { grid: { color: '#21262D' }, ticks: { color: '#8B949E' } },
-          y: { grid: { color: '#21262D' }, ticks: { color: '#8B949E' } }
+          x: { grid: { color: '#1A1A1A' }, ticks: { color: '#666666' } },
+          y: { grid: { color: '#1A1A1A' }, ticks: { color: '#666666' } }
         }
       }
     });
@@ -889,18 +880,21 @@ function renderBenchmarkCharts() {
         labels: curves.epochs.map(e => `Ep ${e}`),
         datasets: [
           {
-            label: 'Baseline Validation Acc (%)',
+            label: 'Baseline Accuracy (%)',
             data: curves.val_acc_baseline,
-            borderColor: '#D29922',
-            tension: 0.3,
-            borderWidth: 2
+            borderColor: '#666666',
+            tension: 0.2,
+            borderWidth: 1.5,
+            borderDash: [4, 4],
+            pointRadius: 2
           },
           {
-            label: 'Augmented Validation Acc (%)',
+            label: 'Augmented Accuracy (%)',
             data: curves.val_acc_augmented,
-            borderColor: '#388BFD',
-            tension: 0.3,
-            borderWidth: 2
+            borderColor: '#FFFFFF',
+            tension: 0.2,
+            borderWidth: 2,
+            pointRadius: 2
           }
         ]
       },
@@ -908,15 +902,15 @@ function renderBenchmarkCharts() {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { labels: { color: '#8B949E', font: { family: '-apple-system', size: 11 } } }
+          legend: { labels: { color: '#9E9E9E', font: { family: '-apple-system', size: 11 } } }
         },
         scales: {
-          x: { grid: { color: '#21262D' }, ticks: { color: '#8B949E' } },
+          x: { grid: { color: '#1A1A1A' }, ticks: { color: '#666666' } },
           y: {
             min: 0,
             max: 100,
-            grid: { color: '#21262D' },
-            ticks: { color: '#8B949E', callback: v => `${v}%` }
+            grid: { color: '#1A1A1A' },
+            ticks: { color: '#666666', callback: v => `${v}%` }
           }
         }
       }
