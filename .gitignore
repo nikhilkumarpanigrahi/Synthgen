@@ -33,3 +33,15 @@ htmlcov/
 *.tar.gz
 data/uploads/*
 !data/uploads/.gitkeep
+
+# PyTorch Checkpoints & Weights
+*.pt
+*.pth
+*.onnx
+data/**/models/
+
+# Generated Runtime Synthetic Data
+data/**/synthetic/*
+!data/**/synthetic/.gitkeep
+
+

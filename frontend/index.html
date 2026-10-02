@@ -428,7 +428,22 @@
               <h2 class="view-heading">Downstream Classifier Ablation Benchmark</h2>
               <p class="view-sub">Quantitative ablation: Baseline (Real-Only) vs Augmented (Real + Synthetic) evaluated on identical held-out real test set.</p>
             </div>
-            <div class="toolbar-right">
+            <div class="toolbar-right" style="display: flex; gap: 8px; align-items: center;">
+              <button class="btn-sm" id="btnViewReport" style="display: flex; align-items: center; gap: 6px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+                <span>Research Report</span>
+              </button>
+              <button class="btn-sm" id="btnExportModel" style="display: flex; align-items: center; gap: 6px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </svg>
+                <span>Export Model Bundle</span>
+              </button>
               <button class="btn-execute" id="btnTrainBenchmark">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                   <polygon points="5 3 19 12 5 21 5 3"/>
@@ -626,6 +641,76 @@
           <img id="inspectorImage" src="" alt="Sample" />
         </div>
         <div class="inspector-metadata" id="inspectorMeta"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Research Report Viewer Modal -->
+  <div class="modal-backdrop" id="reportModal" style="display: none;">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-header-clean">
+        <div>
+          <h3>Empirical Research Evaluation Report</h3>
+          <span style="font-size: 11px; color: var(--text-muted);">Standardized peer-review report generated from PyTorch CNN downstream ablation</span>
+        </div>
+        <button class="modal-close" id="btnCloseReport">&times;</button>
+      </div>
+      <div style="margin-bottom: 12px;">
+        <pre class="report-content-pre" id="reportContentArea">Loading peer-review research report...</pre>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button class="btn-sm" id="btnCopyReport">Copy Markdown</button>
+        <button class="btn-sm" id="btnDownloadReportMd">Download .md</button>
+        <button class="btn-sm" id="btnCloseReportFooter">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dataset Export Configuration Modal -->
+  <div class="modal-backdrop" id="exportModal" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header-clean">
+        <div>
+          <h3>Export Dataset Archive</h3>
+          <span style="font-size: 11px; color: var(--text-muted);">Select standard computer vision distribution format</span>
+        </div>
+        <button class="modal-close" id="btnCloseExportModal">&times;</button>
+      </div>
+      
+      <div class="export-format-list">
+        <label class="export-format-item active" id="labelFormatRaw">
+          <input type="radio" name="exportFormat" value="raw" checked class="export-format-radio" />
+          <div class="export-format-info">
+            <h4>Raw ImageFolder (PyTorch Standard)</h4>
+            <p>Direct class-directory structure compatible with torchvision.datasets.ImageFolder.</p>
+            <code>train/&lt;class&gt;/*.jpg &bull; test/&lt;class&gt;/*.jpg &bull; synthetic/</code>
+          </div>
+        </label>
+
+        <label class="export-format-item" id="labelFormatYolo">
+          <input type="radio" name="exportFormat" value="yolo" class="export-format-radio" />
+          <div class="export-format-info">
+            <h4>YOLO v8 / v9 / v11 Format</h4>
+            <p>Organized image splits with normalized bounding box label text files and data.yaml.</p>
+            <code>images/train/*.jpg &bull; labels/train/*.txt &bull; data.yaml</code>
+          </div>
+        </label>
+
+        <label class="export-format-item" id="labelFormatCoco">
+          <input type="radio" name="exportFormat" value="coco" class="export-format-radio" />
+          <div class="export-format-info">
+            <h4>COCO 2017 Dataset Format</h4>
+            <p>Unified JSON annotation specification with images, categories, and bounding boxes.</p>
+            <code>annotations/coco_annotations.json &bull; images/</code>
+          </div>
+        </label>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button class="btn-sm" id="btnCancelExport">Cancel</button>
+        <button class="btn-sm" id="btnConfirmExportArchive" style="background-color: #222222; color: #FFFFFF; border-color: #444444;">
+          Download Archive (.zip)
+        </button>
       </div>
     </div>
   </div>

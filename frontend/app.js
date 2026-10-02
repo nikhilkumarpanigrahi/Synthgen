@@ -19,6 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initPipeline();
   initAudit();
   initBenchmark();
+  initReportViewer();
+  initModelExport();
   initUpload();
   initExport();
   initInspector();
@@ -1032,15 +1034,143 @@ async function handleSingleUpload(file) {
   }
 }
 
-// 9. Export Dataset Archive
+// 9. Export Dataset Archive (Multi-Format)
 function initExport() {
-  const btn = document.getElementById('btnHeaderExport');
-  if (btn) {
-    btn.addEventListener('click', () => {
-      window.location.href = '/api/export/archive?format=raw';
+  const openBtn = document.getElementById('btnHeaderExport');
+  const modal = document.getElementById('exportModal');
+  const closeBtn = document.getElementById('btnCloseExportModal');
+  const cancelBtn = document.getElementById('btnCancelExport');
+  const confirmBtn = document.getElementById('btnConfirmExportArchive');
+  const formatItems = document.querySelectorAll('.export-format-item');
+
+  if (openBtn && modal) {
+    openBtn.addEventListener('click', () => {
+      modal.style.display = 'flex';
+    });
+  }
+
+  const closeModal = () => {
+    if (modal) modal.style.display = 'none';
+  };
+
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+  formatItems.forEach(item => {
+    item.addEventListener('click', () => {
+      formatItems.forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      const radio = item.querySelector('input[type="radio"]');
+      if (radio) radio.checked = true;
+    });
+  });
+
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', () => {
+      const selectedRadio = document.querySelector('input[name="exportFormat"]:checked');
+      const format = selectedRadio ? selectedRadio.value : 'raw';
+      
+      closeModal();
+      window.location.href = `/api/export/archive?format=${format}`;
     });
   }
 }
+
+// 9b. Scientific Research Report Viewer
+function initReportViewer() {
+  const modal = document.getElementById('reportModal');
+  const openBtn = document.getElementById('btnViewReport');
+  const closeBtn = document.getElementById('btnCloseReport');
+  const closeFooterBtn = document.getElementById('btnCloseReportFooter');
+  const copyBtn = document.getElementById('btnCopyReport');
+  const downloadBtn = document.getElementById('btnDownloadReportMd');
+  const contentArea = document.getElementById('reportContentArea');
+
+  let currentMarkdown = '';
+
+  const closeModal = () => {
+    if (modal) modal.style.display = 'none';
+  };
+
+  if (openBtn) {
+    openBtn.addEventListener('click', async () => {
+      if (modal) modal.style.display = 'flex';
+      if (contentArea) contentArea.textContent = 'Fetching latest scientific ablation report...';
+      try {
+        const res = await fetch('/api/benchmark/report');
+        if (!res.ok) {
+          throw new Error('No benchmark report generated yet. Please run "Train & Evaluate PyTorch CNN Models" first.');
+        }
+        const data = await res.json();
+        currentMarkdown = data.report_markdown || '';
+        if (contentArea) contentArea.textContent = currentMarkdown;
+      } catch (err) {
+        currentMarkdown = '';
+        if (contentArea) contentArea.textContent = `# Evaluation Report Unavailable\n\n${err.message}`;
+      }
+    });
+  }
+
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (closeFooterBtn) closeFooterBtn.addEventListener('click', closeModal);
+
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      if (!currentMarkdown) return;
+      try {
+        await navigator.clipboard.writeText(currentMarkdown);
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = originalText; }, 1800);
+      } catch (e) {
+        alert('Could not copy to clipboard: ' + e);
+      }
+    });
+  }
+
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', () => {
+      if (!currentMarkdown) return;
+      const blob = new Blob([currentMarkdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `synthgen_evaluation_report_${state.inventory?.dataset_id || 'experiment'}.md`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  }
+}
+
+// 9c. Model Weights & Deployment Export
+function initModelExport() {
+  const btn = document.getElementById('btnExportModel');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      try {
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = `<span>Exporting...</span>`;
+        
+        // Trigger download
+        const a = document.createElement('a');
+        a.href = '/api/model/export';
+        a.download = `synthgen_model_export_${state.inventory?.dataset_id || 'active'}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        setTimeout(() => {
+          btn.innerHTML = originalHtml;
+        }, 1500);
+      } catch (err) {
+        alert('Failed to export model: ' + err.message);
+      }
+    });
+  }
+}
+
 
 // 10. Image Detail Inspector
 function initInspector() {
