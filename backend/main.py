@@ -151,6 +151,28 @@ def run_benchmark(req: BenchmarkRunRequest):
         learning_rate=req.learning_rate
     )
 
+class AgenticRunRequest(BaseModel):
+    gan_epochs: int = 20
+    classifier_epochs: int = 8
+
+@app.post("/api/agentic/run")
+def trigger_agentic_training(req: AgenticRunRequest = AgenticRunRequest()):
+    from .agentic_trainer import agentic_orchestrator
+    return agentic_orchestrator.run_autonomous_pipeline(
+        gan_epochs=req.gan_epochs,
+        classifier_epochs=req.classifier_epochs
+    )
+
+@app.get("/api/agentic/status")
+def get_agentic_status():
+    from .agentic_trainer import agentic_orchestrator
+    return {
+        "is_running": agentic_orchestrator.is_running,
+        "current_stage": agentic_orchestrator.current_stage,
+        "thought_trace": agentic_orchestrator.thought_trace,
+        "latest_result": agentic_orchestrator.latest_result
+    }
+
 @app.get("/api/benchmark/report")
 def get_benchmark_report():
     from .cnn_trainer import LAST_BENCHMARK_RESULT, generate_markdown_report

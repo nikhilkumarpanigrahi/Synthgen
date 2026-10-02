@@ -1428,3 +1428,180 @@ body {
   border-radius: 2px;
 }
 
+/* =====================================================================
+   AUTONOMOUS AGENTIC TRAINING CONSOLE
+   ===================================================================== */
+.agent-stepper-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.agent-step-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agent-step-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #161616;
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-step-item.active .agent-step-badge {
+  background-color: #FFFFFF;
+  color: #000000;
+  border-color: #FFFFFF;
+}
+
+.agent-step-item.completed .agent-step-badge {
+  border-color: #666666;
+  color: #CCCCCC;
+}
+
+.agent-step-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-step-info strong {
+  font-size: 11px;
+  color: var(--text-main);
+}
+
+.agent-step-info span {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.agent-step-divider {
+  color: #333333;
+  font-size: 11px;
+}
+
+.agentic-console-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 16px;
+}
+
+.agent-thought-stream {
+  background-color: #050505;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  height: 480px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.thought-placeholder {
+  color: #555555;
+  font-style: italic;
+  padding: 20px;
+  text-align: center;
+  margin: auto 0;
+}
+
+.thought-entry {
+  background-color: #0A0A0A;
+  border: 1px solid #1C1C1C;
+  border-radius: 4px;
+  padding: 10px;
+}
+
+.thought-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 10px;
+  color: #666666;
+}
+
+.thought-agent-badge {
+  color: #FFFFFF;
+  background-color: #202020;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.thought-body {
+  color: #CCCCCC;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.thought-action {
+  color: #888888;
+  font-size: 10px;
+  font-style: italic;
+}
+
+.agent-verdict-body {
+  padding: 4px 0;
+}
+
+.verdict-banner {
+  background-color: #0E0E0E;
+  border: 1px solid #333333;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.verdict-banner.confirmed {
+  border-color: #FFFFFF;
+}
+
+.verdict-banner strong {
+  display: block;
+  font-size: 12px;
+  color: #FFFFFF;
+  margin-bottom: 4px;
+}
+
+.verdict-banner p {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.checkpoint-paths-card {
+  background-color: #070707;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+
+.code-snippet-box {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #888888;
+  margin-top: 6px;
+  line-height: 1.8;
+}
+
+

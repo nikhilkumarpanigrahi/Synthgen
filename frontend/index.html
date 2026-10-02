@@ -106,6 +106,15 @@
           4. Classifier Benchmark
         </button>
 
+        <div class="nav-section-title" style="margin-top: 1rem;">AUTONOMOUS AI</div>
+        <button class="nav-item" data-view="agentic" id="navItemAgentic">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          5. Agentic Training Loop
+        </button>
+
         <div class="nav-section-title" style="margin-top: 1.5rem;">ACTIVE DATASET TELEMETRY</div>
         <div class="sidebar-telemetry">
           <div class="telemetry-row">
@@ -570,6 +579,130 @@
             <div class="cm-card">
               <h4>Confusion Matrix — Synthetic Augmented Model (Real + Synthetic)</h4>
               <div class="matrix-grid" id="matrixAugmented"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- VIEW 5: AUTONOMOUS AGENTIC TRAINING CONSOLE -->
+        <section class="view-panel" id="view-agentic">
+          <div class="view-toolbar">
+            <div>
+              <h2 class="view-heading">Autonomous Agentic Training Pipeline</h2>
+              <p class="view-sub">5-Stage Closed-Loop Multi-Agent System: Profiler &rarr; PyTorch DCGAN &rarr; Quality Critic &rarr; Classifier Ablation &rarr; Reflection Engine</p>
+            </div>
+            <div class="toolbar-right" style="display: flex; gap: 8px; align-items: center;">
+              <button class="btn-execute" id="btnRunAgentic">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                <span>Launch Autonomous Agentic Loop</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Real-Time Multi-Agent Stage Stepper -->
+          <div class="agent-stepper-bar">
+            <div class="agent-step-item" id="agentStep1">
+              <span class="agent-step-badge">1</span>
+              <div class="agent-step-info">
+                <strong>Profiler Agent</strong>
+                <span>Imbalance Diagnosis</span>
+              </div>
+            </div>
+            <div class="agent-step-divider">&rarr;</div>
+            <div class="agent-step-item" id="agentStep2">
+              <span class="agent-step-badge">2</span>
+              <div class="agent-step-info">
+                <strong>DCGAN Trainer</strong>
+                <span>PyTorch Adversarial Fit</span>
+              </div>
+            </div>
+            <div class="agent-step-divider">&rarr;</div>
+            <div class="agent-step-item" id="agentStep3">
+              <span class="agent-step-badge">3</span>
+              <div class="agent-step-info">
+                <strong>Quality Critic</strong>
+                <span>FID & Privacy Gate</span>
+              </div>
+            </div>
+            <div class="agent-step-divider">&rarr;</div>
+            <div class="agent-step-item" id="agentStep4">
+              <span class="agent-step-badge">4</span>
+              <div class="agent-step-info">
+                <strong>Ablation Engine</strong>
+                <span>Dual CNN Evaluation</span>
+              </div>
+            </div>
+            <div class="agent-step-divider">&rarr;</div>
+            <div class="agent-step-item" id="agentStep5">
+              <span class="agent-step-badge">5</span>
+              <div class="agent-step-info">
+                <strong>Reflection Agent</strong>
+                <span>Empirical Verdict</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Split Console: Live Thought Trace & Empirical Results -->
+          <div class="agentic-console-grid">
+            <!-- Left: Streaming Agent Thought Trace & Decision Log -->
+            <div class="data-table-card">
+              <div class="card-header">
+                <h3>Agent Reasoning & Thought Trace</h3>
+                <span class="header-tag" id="agentRunStatusTag">READY</span>
+              </div>
+              <div class="agent-thought-stream" id="agentThoughtStream">
+                <div class="thought-placeholder" id="thoughtPlaceholder">
+                  Click "Launch Autonomous Agentic Loop" to initiate the multi-agent diagnostic, generative training, QA gate, and ablation evaluation lifecycle.
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Empirical Verdict & Autonomous Decisions -->
+            <div class="data-table-card">
+              <div class="card-header">
+                <h3>Autonomous Experiment Verdict</h3>
+                <span class="header-tag" id="agentVerdictTag">AWAITING RUN</span>
+              </div>
+              
+              <div class="agent-verdict-body" id="agentVerdictBody">
+                <div class="verdict-banner" id="agentVerdictBanner" style="display: none;">
+                  <strong id="agentVerdictHeading">Hypothesis Confirmed</strong>
+                  <p id="agentVerdictText">Synthetic augmentation of minority class successfully boosted real-world generalization.</p>
+                </div>
+
+                <div class="metrics-strip" style="margin-top: 12px; grid-template-columns: repeat(2, 1fr);">
+                  <div class="metric-card">
+                    <span class="metric-label">Target Minority Class</span>
+                    <strong class="metric-val" id="agentValRareClass">--</strong>
+                    <span class="metric-sub" id="agentValImbalance">Imbalance: --</span>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-label">Synthesized Parity Quota</span>
+                    <strong class="metric-val" id="agentValQuota">--</strong>
+                    <span class="metric-sub">Samples injected</span>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-label">Quality Critic Audit</span>
+                    <strong class="metric-val" id="agentValFID">--</strong>
+                    <span class="metric-sub" id="agentValGate">Gate: --</span>
+                  </div>
+                  <div class="metric-card">
+                    <span class="metric-label">Minority Recall Delta</span>
+                    <strong class="metric-val" id="agentValRecallDelta" style="color: #FFFFFF;">--</strong>
+                    <span class="metric-sub" id="agentValRuntime">Runtime: --</span>
+                  </div>
+                </div>
+
+                <div class="checkpoint-paths-card" style="margin-top: 14px;">
+                  <span class="kpi-title" style="font-size: 11px;">Saved Checkpoint Artifacts</span>
+                  <div class="code-snippet-box" id="agentCheckpointsBox">
+                    &bull; generative_model_weights.pt (PyTorch DCGAN Generator)<br/>
+                    &bull; augmented_model_weights.pt (PyTorch DefectConvNet)<br/>
+                    &bull; augmented_torchscript.pt (Production Compiled TorchScript)
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>

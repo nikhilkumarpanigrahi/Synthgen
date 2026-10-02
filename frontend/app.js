@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initBenchmark();
   initReportViewer();
   initModelExport();
+  initAgenticConsole();
   initUpload();
   initExport();
   initInspector();
@@ -1206,3 +1207,187 @@ function openInspector(item) {
   metaEl.innerHTML = metaHtml;
   modal.classList.add('active');
 }
+
+// 11. Autonomous Agentic Training Console
+function initAgenticConsole() {
+  const runBtn = document.getElementById('btnRunAgentic');
+  if (!runBtn) return;
+
+  runBtn.addEventListener('click', runAgenticPipeline);
+}
+
+async function runAgenticPipeline() {
+  const runBtn = document.getElementById('btnRunAgentic');
+  const stream = document.getElementById('agentThoughtStream');
+  const statusTag = document.getElementById('agentRunStatusTag');
+  const verdictTag = document.getElementById('agentVerdictTag');
+
+  runBtn.disabled = true;
+  runBtn.innerHTML = `<span>Orchestrating 5-Stage Agent Loop (MPS)...</span>`;
+  statusTag.textContent = 'RUNNING';
+  verdictTag.textContent = 'EXECUTING';
+
+  stream.innerHTML = '';
+
+  // Reset steps
+  for (let i = 1; i <= 5; i++) {
+    const s = document.getElementById(`agentStep${i}`);
+    if (s) {
+      s.classList.remove('active', 'completed');
+    }
+  }
+
+  // Update step 1 as active initially
+  const s1 = document.getElementById('agentStep1');
+  if (s1) s1.classList.add('active');
+
+  let pollInterval = setInterval(async () => {
+    try {
+      const res = await fetch('/api/agentic/status');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.current_stage) {
+          for (let i = 1; i <= 5; i++) {
+            const stepEl = document.getElementById(`agentStep${i}`);
+            if (!stepEl) continue;
+            if (i < data.current_stage) {
+              stepEl.classList.remove('active');
+              stepEl.classList.add('completed');
+            } else if (i === data.current_stage) {
+              stepEl.classList.add('active');
+              stepEl.classList.remove('completed');
+            } else {
+              stepEl.classList.remove('active', 'completed');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore poll error
+    }
+  }, 600);
+
+  try {
+    const res = await fetch('/api/agentic/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gan_epochs: 18, classifier_epochs: 8 })
+    });
+
+    clearInterval(pollInterval);
+
+    if (!res.ok) {
+      throw new Error('Agentic pipeline execution failed');
+    }
+
+    const data = await res.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Pipeline error');
+    }
+
+    renderAgenticResults(data);
+  } catch (err) {
+    clearInterval(pollInterval);
+    console.error('Agentic loop error:', err);
+    statusTag.textContent = 'FAILED';
+    const entry = document.createElement('div');
+    entry.className = 'thought-entry';
+    entry.innerHTML = `
+      <div class="thought-header">
+        <span class="thought-agent-badge" style="background:#5c1d1d;">Error</span>
+      </div>
+      <div class="thought-body" style="color:#ff6b6b;">${err.message}</div>
+    `;
+    stream.appendChild(entry);
+  } finally {
+    runBtn.disabled = false;
+    runBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      <span>Launch Autonomous Agentic Loop</span>
+    `;
+  }
+}
+
+function renderAgenticResults(data) {
+  const stream = document.getElementById('agentThoughtStream');
+  const statusTag = document.getElementById('agentRunStatusTag');
+  const verdictTag = document.getElementById('agentVerdictTag');
+
+  statusTag.textContent = 'COMPLETED';
+  verdictTag.textContent = data.hypothesis_proven ? 'CONFIRMED' : 'EVALUATED';
+
+  // Complete all steps
+  for (let i = 1; i <= 5; i++) {
+    const s = document.getElementById(`agentStep${i}`);
+    if (s) {
+      s.classList.remove('active');
+      s.classList.add('completed');
+    }
+  }
+
+  // Populate thought stream
+  stream.innerHTML = '';
+  if (data.thought_trace && data.thought_trace.length > 0) {
+    data.thought_trace.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'thought-entry';
+      card.innerHTML = `
+        <div class="thought-header">
+          <span class="thought-agent-badge">${t.agent_id} &bull; Stage ${t.stage_index}</span>
+          <span>${t.timestamp}</span>
+        </div>
+        <div class="thought-body">${t.thought}</div>
+        <div class="thought-action">&rarr; ${t.action}</div>
+      `;
+      stream.appendChild(card);
+    });
+    stream.scrollTop = stream.scrollHeight;
+  }
+
+  // Verdict Banner
+  const vBanner = document.getElementById('agentVerdictBanner');
+  const vHeading = document.getElementById('agentVerdictHeading');
+  const vText = document.getElementById('agentVerdictText');
+  if (vBanner) {
+    vBanner.style.display = 'block';
+    if (data.hypothesis_proven) {
+      vBanner.classList.add('confirmed');
+      vHeading.textContent = 'Hypothesis Confirmed: Minority Class Real-World Generalization Achieved';
+    } else {
+      vBanner.classList.remove('confirmed');
+      vHeading.textContent = 'Empirical Parity Maintained across Real Partitions';
+    }
+    vText.textContent = data.research_verdict;
+  }
+
+  // KPIs
+  document.getElementById('agentValRareClass').textContent = data.rare_class || '--';
+  document.getElementById('agentValImbalance').textContent = `Imbalance: ${data.imbalance_ratio || '--'}`;
+  document.getElementById('agentValQuota').textContent = `${data.target_quota} samples`;
+  
+  const qm = data.quality_metrics || {};
+  document.getElementById('agentValFID').textContent = `FID ${qm.fid || '--'}`;
+  document.getElementById('agentValGate').textContent = `Gate: ${qm.status || '--'}`;
+
+  const bc = data.benchmark_comparison || {};
+  const recallDelta = bc.rare_defect_recall?.delta || '+0.0%';
+  document.getElementById('agentValRecallDelta').textContent = `${recallDelta} Jump`;
+  document.getElementById('agentValRuntime').textContent = `Runtime: ${data.total_duration_sec}s`;
+
+  // Checkpoints
+  const cpBox = document.getElementById('agentCheckpointsBox');
+  if (cpBox && data.checkpoint_paths) {
+    cpBox.innerHTML = `
+      &bull; <strong>DCGAN Generator:</strong> ${data.checkpoint_paths.generator_weights}<br/>
+      &bull; <strong>DefectConvNet Classifier:</strong> ${data.checkpoint_paths.classifier_weights}<br/>
+      &bull; <strong>TorchScript Runtime:</strong> ${data.checkpoint_paths.torchscript}
+    `;
+  }
+
+  // Refresh dataset and samples in explorer
+  loadInventory();
+  loadExplorerSamples();
+}
+
