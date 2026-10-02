@@ -1170,3 +1170,155 @@ body {
 .spin {
   animation: spin 1s linear infinite;
 }
+
+/* Guided Workflow Bar */
+.guided-flow-bar {
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.flow-steps {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.flow-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.flow-step:hover {
+  border-color: var(--border-default);
+  background-color: var(--bg-active);
+}
+
+.flow-step.active {
+  background: rgba(31, 111, 235, 0.15);
+  border-color: var(--color-primary);
+}
+
+.flow-step.completed {
+  border-color: var(--color-success);
+}
+
+.step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.flow-step.active .step-num {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #FFF;
+}
+
+.flow-step.completed .step-num {
+  background-color: var(--color-success);
+  border-color: var(--color-success);
+  color: #FFF;
+}
+
+.step-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+  line-height: 1.2;
+}
+
+.step-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.flow-arrow {
+  color: var(--text-muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.btn-one-click {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #1F6FEB 0%, #238636 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(31, 111, 235, 0.25);
+}
+
+.btn-one-click:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(31, 111, 235, 0.4);
+}
+
+.btn-one-click:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Quick Concept Banner */
+.quick-guide-banner {
+  background: rgba(56, 139, 253, 0.08);
+  border-bottom: 1px solid rgba(56, 139, 253, 0.2);
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #C9D1D9;
+}
+
+.guide-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.guide-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.guide-dismiss:hover {
+  color: var(--text-main);
+}

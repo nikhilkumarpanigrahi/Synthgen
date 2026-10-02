@@ -152,6 +152,62 @@
       <!-- Central View Content -->
       <main class="content-viewport">
 
+        <!-- Guided 4-Step Interactive Workflow Bar -->
+        <div class="guided-flow-bar">
+          <div class="flow-steps">
+            <div class="flow-step active" data-flow="datasets" title="Click to inspect dataset">
+              <span class="step-num">1</span>
+              <div class="step-info">
+                <span class="step-title">1. Select Dataset</span>
+                <span class="step-desc" id="flowStep1Desc">Check class imbalance</span>
+              </div>
+            </div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step" data-flow="pipelines" title="Click to generate synthetic samples">
+              <span class="step-num">2</span>
+              <div class="step-info">
+                <span class="step-title">2. Synthesize Images</span>
+                <span class="step-desc" id="flowStep2Desc">Balance minority class</span>
+              </div>
+            </div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step" data-flow="quality" title="Click to audit quality">
+              <span class="step-num">3</span>
+              <div class="step-info">
+                <span class="step-title">3. Audit Quality</span>
+                <span class="step-desc">FID & Privacy check</span>
+              </div>
+            </div>
+            <div class="flow-arrow">&rarr;</div>
+            <div class="flow-step" data-flow="benchmarks" title="Click to compare models">
+              <span class="step-num">4</span>
+              <div class="step-info">
+                <span class="step-title">4. Train & Compare</span>
+                <span class="step-desc">Evaluate real unseen data</span>
+              </div>
+            </div>
+          </div>
+          <button class="btn-one-click" id="btnAutoRunExperiment">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            <span>⚡ 1-Click Run Full Experiment</span>
+          </button>
+        </div>
+
+        <!-- Friendly Quick Concept Card -->
+        <div class="quick-guide-banner" id="quickGuideBanner">
+          <div class="guide-content">
+            <strong>💡 How this works in 3 steps:</strong>
+            <span>
+              1️⃣ Real-world datasets often have very few samples for critical rare classes (e.g. potholes, rare tumors, or hairline cracks).
+              2️⃣ We use Generative AI to synthesize realistic samples for that rare class.
+              3️⃣ We train two neural networks and test on <strong>real unseen images</strong> to prove if synthetic data improves real-world accuracy.
+            </span>
+          </div>
+          <button class="guide-dismiss" id="btnDismissGuide">&times;</button>
+        </div>
+
         <!-- VIEW 1: DATASET EXPLORER -->
         <section class="view-panel active" id="view-datasets">
           <div class="view-toolbar">

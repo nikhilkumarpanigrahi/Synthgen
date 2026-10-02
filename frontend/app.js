@@ -13,6 +13,7 @@ const state = {
 // Application Initialization
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
+  initGuidedWorkflow();
   initDatasetSwitcher();
   initExplorer();
   initPipeline();
@@ -27,25 +28,117 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAvailableDatasets();
 });
 
-// 1. Navigation Controller
+// 1. Navigation & Workflow Controller
+function switchView(viewName) {
+  state.currentView = viewName;
+
+  // Sidebar buttons
+  document.querySelectorAll('.nav-item').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === viewName);
+  });
+
+  // Top Workflow Stepper
+  document.querySelectorAll('.flow-step').forEach(s => {
+    s.classList.toggle('active', s.dataset.flow === viewName);
+  });
+
+  // Main Panels
+  document.querySelectorAll('.view-panel').forEach(p => {
+    p.classList.toggle('active', p.id === `view-${viewName}`);
+  });
+
+  if (viewName === 'benchmarks' && state.lastBenchmarkData) {
+    setTimeout(renderBenchmarkCharts, 50);
+  }
+}
+
 function initNavigation() {
   const items = document.querySelectorAll('.nav-item');
   items.forEach(btn => {
     btn.addEventListener('click', () => {
-      const view = btn.dataset.view;
-      items.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-
-      document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
-      const activePanel = document.getElementById(`view-${view}`);
-      if (activePanel) activePanel.classList.add('active');
-
-      state.currentView = view;
-      if (view === 'benchmarks' && state.lastBenchmarkData) {
-        setTimeout(renderBenchmarkCharts, 50);
-      }
+      switchView(btn.dataset.view);
     });
   });
+}
+
+function initGuidedWorkflow() {
+  // Stepper clicks
+  document.querySelectorAll('.flow-step').forEach(step => {
+    step.addEventListener('click', () => {
+      switchView(step.dataset.flow);
+    });
+  });
+
+  // Dismiss quick guide banner
+  const btnDismiss = document.getElementById('btnDismissGuide');
+  const banner = document.getElementById('quickGuideBanner');
+  if (btnDismiss && banner) {
+    btnDismiss.addEventListener('click', () => {
+      banner.style.display = 'none';
+    });
+  }
+
+  // 1-Click Auto Run Complete Experiment
+  const btnAutoRun = document.getElementById('btnAutoRunExperiment');
+  if (btnAutoRun) {
+    btnAutoRun.addEventListener('click', runFullAutoExperiment);
+  }
+}
+
+async function runFullAutoExperiment() {
+  const btn = document.getElementById('btnAutoRunExperiment');
+  btn.disabled = true;
+  btn.innerHTML = `
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
+      <circle cx="12" cy="12" r="10"></circle>
+      <path d="M12 2a10 10 0 0 1 10 10"></path>
+    </svg>
+    <span>Running Complete Experiment...</span>
+  `;
+
+  try {
+    // Step 1: Ensure dataset inventory is loaded
+    await loadInventory();
+    const rareClass = state.inventory?.analysis?.underrepresented_class || 'pothole';
+    
+    // Step 2: Switch to Generative Synthesis & launch generation
+    switchView('pipelines');
+    const targetSelect = document.getElementById('cfgTargetClass');
+    if (targetSelect) targetSelect.value = rareClass;
+    
+    await launchGenerationJob();
+    const step2 = document.querySelector('.flow-step[data-flow="pipelines"]');
+    if (step2) step2.classList.add('completed');
+
+    // Step 3: Switch to Quality & Audit
+    switchView('quality');
+    await loadAuditData();
+    const step3 = document.querySelector('.flow-step[data-flow="quality"]');
+    if (step3) step3.classList.add('completed');
+
+    // Step 4: Switch to Benchmarks and train PyTorch CNNs
+    switchView('benchmarks');
+    await runClassifierBenchmark();
+    const step4 = document.querySelector('.flow-step[data-flow="benchmarks"]');
+    if (step4) step4.classList.add('completed');
+
+    // Smooth scroll to empirical research question outcome
+    const resultCard = document.getElementById('researchResultCard');
+    if (resultCard) {
+      resultCard.scrollIntoView({ behavior: 'smooth' });
+    }
+  } catch (err) {
+    console.error('Auto experiment run error:', err);
+    alert('Experiment encountered an issue: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+      </svg>
+      <span>⚡ 1-Click Run Full Experiment</span>
+    `;
+  }
 }
 
 // 2. System Status & Dataset Switcher
