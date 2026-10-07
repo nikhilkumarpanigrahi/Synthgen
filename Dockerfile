@@ -11,13 +11,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install PyTorch CPU first (saves ~3GB download & builds in seconds)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
 
-# Expose Hugging Face Spaces standard port
+# Ensure data and cache directories have full write permissions for non-root container users
+RUN mkdir -p /app/data && chmod -R 777 /app
+
+# Expose standard port
 EXPOSE 7860
 
 # Environment variables
