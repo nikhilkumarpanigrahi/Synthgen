@@ -57,9 +57,9 @@ Instead of manual guesswork, `Synthgen` features a closed-loop multi-agent orche
 
 ## 🌐 Multi-Domain Datasets Supported
 
-- 🛣️ **Civil Infrastructure:** Road damage inspection (`normal_road`, `surface_crack`, `pothole`).
-- 🔬 **Dermatology & Medical Imaging:** Skin lesion classification (`melanoma`, `seborrheic_keratosis`, `benign_nevus`).
-- 🏭 **Industrial Manufacturing:** Cold-rolled steel defect inspection (`clean_surface`, `micro_fracture`, `welding_void`).
+- 🛣️ **Civil Infrastructure:** Road damage inspection (`pothole`, `surface_crack`).
+- 🔬 **Dermatology & Medical Imaging:** Skin lesion classification (`melanoma`, `nevus`, `seborrheic_keratosis`).
+- 🏭 **Industrial Manufacturing:** NEU steel defect inspection (`crazing`, `inclusion`, `patches`, `pitted_surface`, `rolled_in_scale`, `scratches`).
 - 📁 **Custom ZIP Upload:** Drag-and-drop any `.zip` containing class subdirectories (`class_a/`, `class_b/`) for automated ingestion and class discovery.
 
 ---
@@ -84,9 +84,78 @@ pip install -r requirements.txt
 python server.py
 ```
 
-Open your browser at **[http://localhost:8080](http://localhost:8080)**.  
-Interactive REST API documentation is available at **[http://localhost:8080/docs](http://localhost:8080/docs)**.
+On Windows PowerShell, use the project interpreter:
 
+```powershell
+.\.venv\Scripts\Activate.ps1
+python server.py
+```
+
+Open your browser at **[http://localhost:8080](http://localhost:8080)**. Set `$env:PORT = "8081"` first if port 8080 is unavailable. Interactive REST API documentation is available at `/docs` on the selected port.
+
+### 3. Load Real Datasets
+
+Synthgen keeps all real images in its existing `data/<domain>/real/<class>/` folders. The local import command replaces only the selected domain's real images, activates that domain, and leaves the shared generation, QA, and classifier pipeline unchanged.
+
+From PowerShell, use the extracted dataset root as `--source`:
+
+```powershell
+python server.py import-local --domain road_defects --source "C:\datasets\road"
+python server.py import-local --domain industrial_defects --source "C:\datasets\NEU"
+```
+
+Road class folders are mapped to `pothole` and `surface_crack`. NEU class folders are preserved as `crazing`, `inclusion`, `patches`, `pitted_surface`, `rolled_in_scale`, and `scratches`. The importer searches recursively and accepts JPG, JPEG, and PNG files.
+
+For skin lesions, Synthgen uses the official ISIC API rather than downloading the ISIC 2017 archive:
+
+```powershell
+python server.py download-isic --per-class 2
+python server.py download-isic --per-class 20
+```
+
+This calls `/api/v2/images/search/` with diagnosis queries for melanoma, nevus, and seborrheic keratosis, then downloads only each result's `files.full.url`. Existing ISIC IDs are skipped. Public access is sufficient; if the API requires authentication in your environment, configure the token without putting it in source control:
+
+```powershell
+$env:ISIC_API_TOKEN = "your-token"
+python server.py download-isic --per-class 20
+```
+
+The resulting folders are:
+
+```text
+data/
+   road_defects/real/pothole/
+   road_defects/real/surface_crack/  # required for two-class road experiments
+   medical_imaging/real/melanoma/
+   medical_imaging/real/nevus/
+   medical_imaging/real/seborrheic_keratosis/
+   industrial_defects/real/crazing/
+   industrial_defects/real/inclusion/
+   industrial_defects/real/patches/
+   industrial_defects/real/pitted_surface/
+   industrial_defects/real/rolled_in_scale/
+   industrial_defects/real/scratches/
+```
+
+Check each imported domain before training:
+
+```powershell
+python -c "from backend.dataset_manager import inspect_dataset_inventory as i; print(i('road_defects')); print(i('medical_imaging')); print(i('industrial_defects'))"
+```
+
+Then start the application, select each domain in the dashboard, inspect its real samples, run a small generation job for a discovered class, and run the benchmark. The benchmark uses the existing 75/25 real train/validation split and the same preprocessing for all domains.
+
+### 4. Verified Local Dataset State
+
+The current workspace has been verified with these real-image counts:
+
+| Domain | Classes | Real images |
+| --- | --- | ---: |
+| Road | `pothole` | 210 |
+| Skin | `melanoma`, `nevus`, `seborrheic_keratosis` | 20 each |
+| Steel | Six NEU defect classes | 300 each |
+
+The current Road archive did not contain a crack class, so `surface_crack` is not populated yet. Add a directory containing crack images and re-run the Road import before benchmarking road damage classification.
 ---
 
 ## 🎨 UI Aesthetic

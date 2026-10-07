@@ -3,6 +3,9 @@ import shutil
 import zipfile
 import uuid
 import json
+import re
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from typing import List, Dict, Any, Optional, Tuple
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 import numpy as np
@@ -12,31 +15,30 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 UPLOADS_DIR = os.path.join(DATA_DIR, "uploads")
 
 ACTIVE_CONFIG_PATH = os.path.join(DATA_DIR, "active_dataset.json")
-REAL_DIR = os.path.join(DATA_DIR, "road_defects", "real")
-SYNTH_DIR = os.path.join(DATA_DIR, "road_defects", "synthetic")
-CLASSES = ["pothole", "surface_crack", "normal_road"]
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png")
+ISIC_SEARCH_URL = "https://api.isic-archive.com/api/v2/images/search/"
 
 DOMAINS = {
     "road_defects": {
         "name": "Civil Infrastructure: Road Surface Defects",
         "description": "Asphalt road conditions with extreme scarcity of critical pothole safety hazards.",
-        "classes": ["pothole", "surface_crack", "normal_road"],
+        "classes": ["pothole", "surface_crack"],
         "rare_class": "pothole",
-        "counts": {"pothole": 16, "surface_crack": 32, "normal_road": 64}
+        "counts": {"pothole": 16, "surface_crack": 32}
     },
     "medical_imaging": {
         "name": "Dermatology: Pigmented Skin Lesions",
         "description": "Histopathological dermatoscopy images with rare malignant melanoma cases.",
-        "classes": ["malignant_melanoma", "keratosis", "benign_nevus"],
-        "rare_class": "malignant_melanoma",
-        "counts": {"malignant_melanoma": 12, "keratosis": 30, "benign_nevus": 72}
+        "classes": ["melanoma", "nevus", "seborrheic_keratosis"],
+        "rare_class": "melanoma",
+        "counts": {"melanoma": 12, "nevus": 30, "seborrheic_keratosis": 72}
     },
     "industrial_defects": {
         "name": "Manufacturing: Steel Surface Anomalies",
         "description": "Automated quality control inspection with critical rare micro-crack defects.",
-        "classes": ["micro_fracture", "welding_void", "normal_surface"],
-        "rare_class": "micro_fracture",
-        "counts": {"micro_fracture": 14, "welding_void": 32, "normal_surface": 60}
+        "classes": ["crazing", "inclusion", "patches", "pitted_surface", "rolled_in_scale", "scratches"],
+        "rare_class": "crazing",
+        "counts": {}
     }
 }
 
@@ -63,6 +65,150 @@ def get_dataset_base_paths(dataset_id: Optional[str] = None) -> Tuple[str, str]:
     os.makedirs(synth_dir, exist_ok=True)
     return real_dir, synth_dir
 
+
+def _is_image(filename: str) -> bool:
+    return filename.lower().endswith(IMAGE_EXTENSIONS)
+
+
+def _external_dataset_marker(dataset_id: str) -> str:
+    return os.path.join(DATA_DIR, dataset_id, ".external_real_dataset")
+
+
+def _clear_real_dataset(real_dir: str):
+    os.makedirs(real_dir, exist_ok=True)
+    for item in os.listdir(real_dir):
+        path = os.path.join(real_dir, item)
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        elif _is_image(item):
+            os.remove(path)
+
+
+def _classify_local_path(path: str, aliases: Dict[str, Tuple[str, ...]]) -> Optional[str]:
+    parts = [re.sub(r"[^a-z0-9]+", "_", part.lower()).strip("_") for part in path.split(os.sep)]
+    for class_name, names in aliases.items():
+        if any(part in names or any(alias in part for alias in names) for part in parts):
+            return class_name
+    return None
+
+
+def import_local_dataset(dataset_id: str, source_root: str) -> Dict[str, Any]:
+    """Replace a domain's real images with a local class-folder dataset."""
+    source_root = os.path.abspath(os.path.expanduser(source_root))
+    if not os.path.isdir(source_root):
+        raise ValueError(f"Dataset source directory does not exist: {source_root}")
+
+    aliases = {
+        "road_defects": {
+            "pothole": ("pothole", "potholes"),
+            "surface_crack": ("crack", "cracks", "surface_crack", "surface_cracks")
+        },
+        "industrial_defects": {
+            "crazing": ("crazing",),
+            "inclusion": ("inclusion",),
+            "patches": ("patch", "patches"),
+            "pitted_surface": ("pitted_surface", "pitted", "pitted_surface_defect"),
+            "rolled_in_scale": ("rolled_in_scale", "rolled_in", "rolled_in_scale_defect"),
+            "scratches": ("scratch", "scratches")
+        }
+    }
+    if dataset_id not in aliases:
+        raise ValueError(f"Local import is supported for: {sorted(aliases)}")
+
+    copied = {class_name: 0 for class_name in aliases[dataset_id]}
+    files_to_copy = []
+    for root, _, files in os.walk(source_root):
+        for filename in files:
+            if not _is_image(filename):
+                continue
+            class_name = _classify_local_path(os.path.join(root, filename), aliases[dataset_id])
+            if not class_name:
+                continue
+            files_to_copy.append((os.path.join(root, filename), filename, class_name))
+            copied[class_name] += 1
+
+    if not any(copied.values()):
+        raise ValueError(f"No supported class folders were found under: {source_root}")
+    real_dir, _ = get_dataset_base_paths(dataset_id)
+    _clear_real_dataset(real_dir)
+    copied = {class_name: 0 for class_name in aliases[dataset_id]}
+    for source_path, filename, class_name in files_to_copy:
+        destination_dir = os.path.join(real_dir, class_name)
+        os.makedirs(destination_dir, exist_ok=True)
+        stem, extension = os.path.splitext(filename)
+        destination = os.path.join(destination_dir, f"{stem}_{copied[class_name] + 1:05d}{extension.lower()}")
+        shutil.copy2(source_path, destination)
+        copied[class_name] += 1
+    with open(_external_dataset_marker(dataset_id), "w") as marker:
+        marker.write(source_root)
+    set_active_dataset_id(dataset_id)
+    return inspect_dataset_inventory(dataset_id)
+
+
+def _isic_diagnoses(image_record: Dict[str, Any]) -> List[str]:
+    clinical = image_record.get("metadata", {}).get("clinical", {})
+    return [str(value).strip().lower() for key, value in clinical.items() if key.startswith("diagnosis_") and value]
+
+
+def _isic_matches(diagnoses: List[str], target: str) -> bool:
+    if target == "melanoma":
+        return any("melanoma" in diagnosis for diagnosis in diagnoses)
+    if target == "nevus":
+        return any(diagnosis == "nevus" or "nevus," in diagnosis for diagnosis in diagnoses)
+    return any("seborrheic keratosis" in diagnosis for diagnosis in diagnoses)
+
+
+def download_isic_dataset(per_class: int = 20, api_token: Optional[str] = None) -> Dict[str, Any]:
+    """Download a small labelled ISIC subset into medical_imaging/real."""
+    if per_class < 1:
+        raise ValueError("per_class must be at least 1")
+    real_dir, _ = get_dataset_base_paths("medical_imaging")
+    if not os.path.exists(_external_dataset_marker("medical_imaging")):
+        _clear_real_dataset(real_dir)
+    queries = {
+        "melanoma": "diagnosis_3:Melanoma*",
+        "nevus": "diagnosis_3:Nevus",
+        "seborrheic_keratosis": 'diagnosis_3:"Seborrheic keratosis"'
+    }
+    headers = {"User-Agent": "Synthgen/1.0"}
+    token = api_token or os.getenv("ISIC_API_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    downloaded = {}
+
+    for class_name, query in queries.items():
+        target_dir = os.path.join(real_dir, class_name)
+        os.makedirs(target_dir, exist_ok=True)
+        existing = {os.path.splitext(name)[0] for name in os.listdir(target_dir) if _is_image(name)}
+        candidates_url = ISIC_SEARCH_URL + "?" + urlencode({"query": query, "limit": 100})
+        downloaded[class_name] = 0
+        while candidates_url and len(existing) < per_class:
+            request = Request(candidates_url, headers=headers)
+            with urlopen(request, timeout=60) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            for record in payload.get("results", []):
+                isic_id = record.get("isic_id")
+                full_url = record.get("files", {}).get("full", {}).get("url")
+                if not isic_id or isic_id in existing or not full_url or not _isic_matches(_isic_diagnoses(record), class_name):
+                    continue
+                image_request = Request(full_url, headers=headers)
+                with urlopen(image_request, timeout=120) as image_response:
+                    image_bytes = image_response.read()
+                with open(os.path.join(target_dir, f"{isic_id}.jpg"), "wb") as image_file:
+                    image_file.write(image_bytes)
+                existing.add(isic_id)
+                downloaded[class_name] += 1
+                if len(existing) >= per_class:
+                    break
+            candidates_url = payload.get("next")
+        if len(existing) < per_class:
+            raise RuntimeError(f"ISIC returned only {len(existing)} usable {class_name} images; requested {per_class}")
+
+    with open(_external_dataset_marker("medical_imaging"), "w") as marker:
+        marker.write("ISIC Archive API")
+    set_active_dataset_id("medical_imaging")
+    return inspect_dataset_inventory("medical_imaging")
+
 # Procedural Image Generators for Domains
 def generate_procedural_sample(domain: str, cls_name: str, width: int = 256, height: int = 256, seed: int = None) -> Image.Image:
     if seed:
@@ -77,7 +223,7 @@ def generate_procedural_sample(domain: str, cls_name: str, width: int = 256, hei
         draw = ImageDraw.Draw(img)
         cx, cy = width // 2, height // 2
         
-        if cls_name == "malignant_melanoma":
+        if cls_name == "melanoma":
             # Asymmetrical, irregular dark lesion (ABCD criteria for rare melanoma)
             pts = []
             steps = 24
@@ -90,7 +236,7 @@ def generate_procedural_sample(domain: str, cls_name: str, width: int = 256, hei
             # Inner irregular pigmentation
             inner = [(cx + (x - cx) * 0.6, cy + (y - cy) * 0.6) for x, y in pts]
             draw.polygon(inner, fill=(20, 10, 10))
-        elif cls_name == "keratosis":
+        elif cls_name == "seborrheic_keratosis":
             # Rough, crusty brownish patch
             rad = np.random.randint(35, 55)
             draw.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], fill=(130, 85, 60))
@@ -166,8 +312,10 @@ def initialize_domain_datasets():
         for cls_name in meta["classes"]:
             c_dir = os.path.join(real_dir, cls_name)
             os.makedirs(c_dir, exist_ok=True)
-            target_count = meta["counts"][cls_name]
-            existing = [f for f in os.listdir(c_dir) if f.endswith((".jpg", ".png"))]
+            if os.path.exists(_external_dataset_marker(ds_id)):
+                continue
+            target_count = meta["counts"].get(cls_name, 0)
+            existing = [f for f in os.listdir(c_dir) if _is_image(f)]
             if len(existing) < target_count:
                 for i in range(len(existing), target_count):
                     fname = f"real_{cls_name}_{i+1:03d}.jpg"
@@ -219,7 +367,7 @@ def inspect_dataset_inventory(dataset_id: Optional[str] = None) -> Dict[str, Any
         for c in sorted(os.listdir(real_dir)):
             cp = os.path.join(real_dir, c)
             if os.path.isdir(cp):
-                imgs = [f for f in os.listdir(cp) if f.endswith((".jpg", ".png", ".jpeg"))]
+                imgs = [f for f in os.listdir(cp) if _is_image(f)]
                 real_counts[c] = len(imgs)
                 
     # Scan synthetic counts
@@ -228,7 +376,7 @@ def inspect_dataset_inventory(dataset_id: Optional[str] = None) -> Dict[str, Any
         for c in sorted(os.listdir(synth_dir)):
             cp = os.path.join(synth_dir, c)
             if os.path.isdir(cp):
-                imgs = [f for f in os.listdir(cp) if f.endswith((".jpg", ".png", ".jpeg"))]
+                imgs = [f for f in os.listdir(cp) if _is_image(f)]
                 synth_counts[c] = len(imgs)
 
     classes = list(real_counts.keys())
