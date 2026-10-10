@@ -93,7 +93,61 @@ python server.py
 
 Open your browser at **[http://localhost:8080](http://localhost:8080)**. Set `$env:PORT = "8081"` first if port 8080 is unavailable. Interactive REST API documentation is available at `/docs` on the selected port.
 
-### 3. Load Real Datasets
+### 3. Deploy to Google Cloud Run
+
+The included `Dockerfile` runs FastAPI with Uvicorn on the `PORT` supplied by Cloud Run. Install the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install), create or select a billed GCP project, and authenticate:
+
+```powershell
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
+```
+
+Set deployment variables in PowerShell:
+
+```powershell
+$env:PROJECT_ID = "YOUR_PROJECT_ID"
+$env:REGION = "us-central1"
+$env:REPOSITORY = "synthgen"
+$env:SERVICE = "synthgen-web"
+$env:IMAGE = "$env:REGION-docker.pkg.dev/$env:PROJECT_ID/$env:REPOSITORY/$env:SERVICE:v1"
+```
+
+Create the Docker repository once, then build and push the image from the repository root:
+
+```powershell
+gcloud artifacts repositories create $env:REPOSITORY --repository-format=docker --location=$env:REGION --description="Synthgen container images"
+gcloud builds submit --tag $env:IMAGE .
+```
+
+Deploy the initial service. These settings keep expensive in-process PyTorch jobs from multiplying across instances:
+
+```powershell
+gcloud run deploy $env:SERVICE `
+   --image $env:IMAGE `
+   --region $env:REGION `
+   --platform managed `
+   --cpu 4 `
+   --memory 8Gi `
+   --timeout 3600 `
+   --concurrency 1 `
+   --max 1 `
+   --set-env-vars PYTHONUNBUFFERED=1 `
+   --allow-unauthenticated
+```
+
+Use `--no-allow-unauthenticated` for a private service. Retrieve and verify the HTTPS URL:
+
+```powershell
+$env:SERVICE_URL = gcloud run services describe $env:SERVICE --region $env:REGION --format="value(status.url)"
+Invoke-WebRequest "$env:SERVICE_URL/" -UseBasicParsing
+Invoke-WebRequest "$env:SERVICE_URL/docs" -UseBasicParsing
+Invoke-WebRequest "$env:SERVICE_URL/api/system/status" -UseBasicParsing
+```
+
+This is suitable for an initial demo. Cloud Run's local filesystem is ephemeral, while this application currently stores uploaded datasets, generated images, models, and active-dataset state under `data/`. Move those assets to Cloud Storage before relying on the deployment for durable research data. Training endpoints also run synchronously in the web process; use Cloud Run Jobs or a queue-backed worker for production-scale training.
+
+### 4. Load Real Datasets
 
 Synthgen keeps all real images in its existing `data/<domain>/real/<class>/` folders. The local import command replaces only the selected domain's real images, activates that domain, and leaves the shared generation, QA, and classifier pipeline unchanged.
 

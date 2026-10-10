@@ -17,12 +17,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Expose Hugging Face Spaces standard port
-EXPOSE 7860
+# Cloud Run provides PORT at runtime; 8080 is the local/container default.
+EXPOSE 8080
 
 # Environment variables
-ENV PORT=7860
+ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 
-# Launch server
-CMD ["python", "server.py"]
+# Launch the application without the development reloader.
+CMD ["sh", "-c", "exec uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

@@ -10,7 +10,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
 
 from .dataset_manager import (
     get_active_dataset_id,
@@ -21,6 +20,27 @@ from .dataset_manager import (
 # Device selection: Apple Silicon MPS if available, else CPU
 DEVICE = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 LAST_BENCHMARK_RESULT = None
+
+def classification_metrics(y_true: List[int], y_pred: List[int], labels: List[int]):
+    confusion = np.zeros((len(labels), len(labels)), dtype=np.int64)
+    for actual, predicted in zip(y_true, y_pred):
+        if actual in labels and predicted in labels:
+            confusion[labels.index(actual), labels.index(predicted)] += 1
+
+    precision = np.zeros(len(labels), dtype=np.float64)
+    recall = np.zeros(len(labels), dtype=np.float64)
+    f1 = np.zeros(len(labels), dtype=np.float64)
+    support = confusion.sum(axis=1)
+    for index in range(len(labels)):
+        true_positive = confusion[index, index]
+        predicted_positive = confusion[:, index].sum()
+        precision[index] = true_positive / predicted_positive if predicted_positive else 0.0
+        recall[index] = true_positive / support[index] if support[index] else 0.0
+        if precision[index] + recall[index]:
+            f1[index] = 2 * precision[index] * recall[index] / (precision[index] + recall[index])
+
+    accuracy = sum(actual == predicted for actual, predicted in zip(y_true, y_pred)) / max(1, len(y_true))
+    return accuracy, precision, recall, f1, support, confusion.tolist()
 
 def generate_markdown_report(res: Dict[str, Any]) -> str:
     """Generates a publication-grade scientific research report from benchmark ablation results."""
@@ -390,9 +410,8 @@ class DownstreamClassifierBenchmark:
                 y_pred.extend(preds.cpu().numpy().tolist())
 
         label_indices = list(range(num_classes))
-        overall_acc = round(accuracy_score(y_true, y_pred) * 100, 1) if y_true else 0.0
-        prec, rec, f1, support = precision_recall_fscore_support(y_true, y_pred, labels=label_indices, zero_division=0)
-        cm = confusion_matrix(y_true, y_pred, labels=label_indices).tolist()
+        accuracy, prec, rec, f1, support, cm = classification_metrics(y_true, y_pred, label_indices)
+        overall_acc = round(accuracy * 100, 1) if y_true else 0.0
 
         macro_f1 = round(float(np.mean(f1)) * 100, 1)
         

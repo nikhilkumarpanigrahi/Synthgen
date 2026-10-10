@@ -4,7 +4,6 @@ import numpy as np
 from PIL import Image
 from typing import Dict, Any, List, Tuple
 from scipy.linalg import sqrtm
-from sklearn.neighbors import NearestNeighbors
 from .dataset_manager import get_active_dataset_id, get_dataset_base_paths
 
 def extract_dense_descriptors(img: Image.Image) -> np.ndarray:
@@ -215,12 +214,9 @@ class QualityAssuranceEngine:
         return min(7.5, max(1.8, is_score * 1.8))
 
     def _compute_memorization_audit(self, R: np.ndarray, S: np.ndarray, r_paths: List[str], s_paths: List[str]) -> Tuple[List[Dict[str, Any]], float]:
-        nn = NearestNeighbors(n_neighbors=1, metric="euclidean")
-        nn.fit(R)
-        distances, indices = nn.kneighbors(S)
-
-        distances = distances.flatten()
-        indices = indices.flatten()
+        pairwise_distances = np.linalg.norm(S[:, None, :] - R[None, :, :], axis=2)
+        indices = np.argmin(pairwise_distances, axis=1)
+        distances = pairwise_distances[np.arange(len(S)), indices]
 
         pairs = []
         # Take up to 4 pairs for visual verification
