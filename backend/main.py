@@ -2,7 +2,7 @@ import os
 import io
 import json
 import zipfile
-from typing import Optional, List
+from typing import Optional, List, Literal
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -102,7 +102,7 @@ def dataset_inventory():
 
 @app.get("/api/dataset/samples")
 def dataset_samples(
-    category: str = Query("real", enum=["real", "synthetic"]),
+    category: Literal["real", "synthetic"] = Query("real"),
     class_name: Optional[str] = None,
     limit: int = Query(40, le=200),
     offset: int = Query(0, ge=0)
@@ -278,7 +278,7 @@ if __name__ == "__main__":
     )
 
 @app.get("/api/export/archive")
-def export_archive(format: str = Query("raw", enum=["raw", "yolo", "coco"])):
+def export_archive(format: Literal["raw", "yolo", "coco"] = Query("raw")):
     ds_id = get_active_dataset_id()
     real_dir, synth_dir = get_dataset_base_paths(ds_id)
     inv = inspect_dataset_inventory(ds_id)
