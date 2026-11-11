@@ -25,6 +25,8 @@ from .generator import GenerationPipeline, JOBS_REGISTRY
 from .evaluator import QualityAssuranceEngine
 from .cnn_trainer import DownstreamClassifierBenchmark
 
+os.makedirs(DATA_DIR, exist_ok=True)
+
 app = FastAPI(
     title="Synthetic Data Generator Platform",
     description="Scientific Deep-Learning Synthetic Data Generation & Minority-Class Augmentation Platform",
