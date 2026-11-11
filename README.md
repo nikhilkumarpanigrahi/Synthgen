@@ -93,7 +93,13 @@ python server.py
 
 Open your browser at **[http://localhost:8080](http://localhost:8080)**. Set `$env:PORT = "8081"` first if port 8080 is unavailable. Interactive REST API documentation is available at `/docs` on the selected port.
 
-### 3. Deploy to Google Cloud Run
+### 3. Deploy to Render
+
+Create a **Web Service** from this repository and select **Docker** as the runtime. Render will use the included `Dockerfile`; no custom start command is required. Set the health check path to `/api/system/status`.
+
+The Docker build intentionally excludes the local `data/` directory, which contains large datasets and runtime artifacts. Built-in procedural data is recreated at startup. Add a Render persistent disk mounted at `/app/data` if uploaded datasets, generated images, or trained models must survive redeploys; otherwise that data is ephemeral.
+
+### 4. Deploy to Google Cloud Run
 
 The included `Dockerfile` runs FastAPI with Uvicorn on the `PORT` supplied by Cloud Run. Install the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install), create or select a billed GCP project, and authenticate:
 
@@ -147,7 +153,7 @@ Invoke-WebRequest "$env:SERVICE_URL/api/system/status" -UseBasicParsing
 
 This is suitable for an initial demo. Cloud Run's local filesystem is ephemeral, while this application currently stores uploaded datasets, generated images, models, and active-dataset state under `data/`. Move those assets to Cloud Storage before relying on the deployment for durable research data. Training endpoints also run synchronously in the web process; use Cloud Run Jobs or a queue-backed worker for production-scale training.
 
-### 4. Load Real Datasets
+### 5. Load Real Datasets
 
 Synthgen keeps all real images in its existing `data/<domain>/real/<class>/` folders. The local import command replaces only the selected domain's real images, activates that domain, and leaves the shared generation, QA, and classifier pipeline unchanged.
 
@@ -199,7 +205,7 @@ python -c "from backend.dataset_manager import inspect_dataset_inventory as i; p
 
 Then start the application, select each domain in the dashboard, inspect its real samples, run a small generation job for a discovered class, and run the benchmark. The benchmark uses the existing 75/25 real train/validation split and the same preprocessing for all domains.
 
-### 4. Verified Local Dataset State
+### 6. Verified Local Dataset State
 
 The current workspace has been verified with these real-image counts:
 

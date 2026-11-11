@@ -3,6 +3,7 @@ import io
 import json
 import zipfile
 from typing import Optional, List
+import torch
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
